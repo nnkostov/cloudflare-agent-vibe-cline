@@ -242,6 +242,9 @@ export class GitHubAgent extends BaseService {
     // Get README and analyze
     const readme = await this.github.getReadmeContent(repo.owner, repo.name);
     const model = this.analyzer.getRecommendedModel(score);
+    
+    console.log(`Using model ${model} for ${repo.full_name} (score: ${score.total}, growth: ${score.growth})`);
+    
     const analysis = await this.claude.analyzeRepository(repo, readme, model);
     
     // Save analysis
@@ -257,7 +260,10 @@ export class GitHubAgent extends BaseService {
         metadata: {
           investment_score: analysis.scores.investment,
           growth_score: score.growth,
-          recommendation: analysis.recommendation
+          recommendation: analysis.recommendation,
+          model_used: model,
+          technical_moat: analysis.scores.technical_moat,
+          scalability: analysis.scores.scalability
         }
       });
     }

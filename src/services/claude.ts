@@ -5,6 +5,7 @@ import { CONFIG as Config } from '../types';
 interface ClaudeResponse {
   content: Array<{ type: 'text'; text: string }>;
   usage?: { input_tokens: number; output_tokens: number };
+  model?: string;
 }
 
 export class ClaudeService extends BaseService {
@@ -16,13 +17,24 @@ export class ClaudeService extends BaseService {
   async analyzeRepository(
     repo: Repository,
     readme: string,
-    model: ClaudeModel = 'claude-3-sonnet-20240229'
+    model: ClaudeModel = 'claude-3-5-sonnet-20241022'
   ): Promise<Analysis> {
     return this.handleError(async () => {
-      const prompt = this.buildPrompt(repo, readme);
+      const isEnhancedModel = this.isClaudeV4Model(model);
+      const prompt = isEnhancedModel && Config.claude.enhancedAnalysis
+        ? this.buildEnhancedPrompt(repo, readme)
+        : this.buildPrompt(repo, readme);
+      
       const response = await this.callClaude(prompt, model);
       return this.parseResponse(response, repo.id, model);
     }, `analyze repository ${repo.full_name}`);
+  }
+
+  /**
+   * Check if model is Claude v4
+   */
+  private isClaudeV4Model(model: ClaudeModel): boolean {
+    return model.includes('claude-3-5');
   }
 
   /**
@@ -40,7 +52,7 @@ Description: ${repo.description || 'No description'}
 README (first 5000 chars):
 ${readme.substring(0, 5000)}${readme.length > 5000 ? '...' : ''}
 
-Provide a JSON response with this exact structure:
+Provide ONLY a valid JSON response with this exact structure (no additional text before or after):
 {
   "scores": {
     "investment": <0-100>,
@@ -55,8 +67,57 @@ Provide a JSON response with this exact structure:
   "questions": ["<due diligence question 1>", "<question 2>", ...]
 }
 
-Focus on: technical innovation, team quality, market opportunity, scalability, and competitive advantages.
+Important: Ensure all string values are properly escaped for JSON. Focus on: technical innovation, team quality, market opportunity, scalability, and competitive advantages.
 Be critical - only exceptional projects should score above 80.`;
+  }
+
+  /**
+   * Build enhanced prompt for Claude-4 models
+   */
+  private buildEnhancedPrompt(repo: Repository, readme: string): string {
+    const readmeChars = this.isClaudeV4Model(Config.claude.models.high) ? 10000 : 5000;
+    
+    return `You are a senior venture capital partner at a top-tier AI/ML investment firm. Perform a comprehensive deep-dive analysis of this GitHub repository:
+
+Repository: ${repo.full_name}
+Stars: ${repo.stars} | Forks: ${repo.forks} | Language: ${repo.language || 'N/A'}
+Created: ${repo.created_at} | Updated: ${repo.updated_at} | Last Push: ${repo.pushed_at}
+Topics: ${repo.topics.join(', ') || 'None'}
+Description: ${repo.description || 'No description'}
+Open Issues: ${repo.open_issues} | Default Branch: ${repo.default_branch}
+
+README (first ${readmeChars} chars):
+${readme.substring(0, readmeChars)}${readme.length > readmeChars ? '...' : ''}
+
+Provide a comprehensive investment analysis as a valid JSON response with this exact structure:
+{
+  "scores": {
+    "investment": <0-100>,
+    "innovation": <0-100>,
+    "team": <0-100>,
+    "market": <0-100>,
+    "technical_moat": <0-100>,
+    "scalability": <0-100>,
+    "developer_adoption": <0-100>
+  },
+  "recommendation": "<strong-buy|buy|watch|pass>",
+  "summary": "<3-4 paragraph executive summary with key insights>",
+  "strengths": ["<detailed strength 1>", "<detailed strength 2>", ...],
+  "risks": ["<detailed risk 1>", "<detailed risk 2>", ...],
+  "questions": ["<strategic due diligence question 1>", "<question 2>", ...],
+  "growth_prediction": "<6-12 month growth trajectory prediction with reasoning>",
+  "investment_thesis": "<2-3 paragraph investment thesis if recommendation is buy/strong-buy>",
+  "competitive_analysis": "<analysis of competitive landscape and differentiation>"
+}
+
+Scoring Guidelines:
+- 90-100: Exceptional, potential unicorn with clear technical moat
+- 80-89: Strong investment opportunity with significant growth potential
+- 70-79: Solid project worth monitoring, may need more maturity
+- 60-69: Interesting but with notable limitations
+- Below 60: Not investment-ready
+
+Focus on: technical architecture depth, scalability potential, developer ecosystem fit, competitive differentiation, team track record, market timing, and potential for 10x+ returns.`;
   }
 
   /**
@@ -69,6 +130,7 @@ Be critical - only exceptional projects should score above 80.`;
         'Content-Type': 'application/json',
         'x-api-key': this.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
       },
       body: JSON.stringify({
         model,
@@ -84,6 +146,12 @@ Be critical - only exceptional projects should score above 80.`;
     }
 
     const data = await response.json() as ClaudeResponse;
+    
+    // Log token usage for monitoring
+    if (data.usage) {
+      console.log(`Model: ${model}, Tokens: ${data.usage.input_tokens + data.usage.output_tokens}`);
+    }
+    
     return data.content[0]?.text || '';
   }
 
@@ -92,42 +160,43 @@ Be critical - only exceptional projects should score above 80.`;
    */
   private parseResponse(response: string, repoId: string, model: ClaudeModel): Analysis {
     try {
-      // Extract JSON from response, handling potential formatting issues
+      // Extract JSON from response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('No JSON in response');
       
-      // Clean up the JSON string to handle common issues
-      let jsonStr = jsonMatch[0]
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
-        .replace(/\n/g, '\\n') // Escape newlines
-        .replace(/\r/g, '\\r') // Escape carriage returns
-        .replace(/\t/g, '\\t'); // Escape tabs
+      // Clean up the JSON string - remove control characters but preserve valid JSON structure
+      const cleanJson = jsonMatch[0].replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
       
-      // Fix common JSON issues
-      jsonStr = jsonStr.replace(/([^\\])"/g, '$1\\"'); // Escape unescaped quotes
-      jsonStr = jsonStr.replace(/\\\\"/g, '\\"'); // Fix double-escaped quotes
+      const parsed = JSON.parse(cleanJson);
       
-      const parsed = JSON.parse(jsonStr);
-      
-      return {
+      const analysis: Analysis = {
         repo_id: repoId,
         scores: {
           investment: parsed.scores?.investment || 0,
           innovation: parsed.scores?.innovation || 0,
           team: parsed.scores?.team || 0,
           market: parsed.scores?.market || 0,
+          technical_moat: parsed.scores?.technical_moat,
+          scalability: parsed.scores?.scalability,
+          developer_adoption: parsed.scores?.developer_adoption,
         },
         recommendation: parsed.recommendation || 'pass',
         summary: parsed.summary || '',
         strengths: parsed.strengths || [],
         risks: parsed.risks || [],
         questions: parsed.questions || [],
+        growth_prediction: parsed.growth_prediction,
+        investment_thesis: parsed.investment_thesis,
+        competitive_analysis: parsed.competitive_analysis,
         metadata: {
           model,
           cost: this.estimateCost(model, response.length),
           timestamp: new Date().toISOString(),
+          tokens_used: response.length * 0.25, // Rough estimate
         },
       };
+      
+      return analysis;
     } catch (error) {
       throw new Error(`Failed to parse analysis: ${error}`);
     }
@@ -139,6 +208,8 @@ Be critical - only exceptional projects should score above 80.`;
   private estimateCost(model: ClaudeModel, responseLength: number): number {
     const tokens = responseLength * 0.25; // Rough estimate
     const pricing: Record<string, number> = {
+      'claude-3-5-opus-20241022': 15.00,    // Claude-4 Opus pricing (estimate)
+      'claude-3-5-sonnet-20241022': 3.00,   // Claude-4 Sonnet pricing (estimate)
       'claude-3-opus-20240229': 15.00,
       'claude-3-sonnet-20240229': 3.00,
       'claude-3-haiku-20240307': 0.25,

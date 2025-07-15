@@ -57,7 +57,13 @@ export interface Contributor {
 }
 
 // Simplified Analysis types
-export type ClaudeModel = 'claude-3-opus-20240229' | 'claude-3-sonnet-20240229' | 'claude-3-haiku-20240307';
+export type ClaudeModel = 
+  | 'claude-3-5-opus-20241022'      // Claude Opus 4
+  | 'claude-3-5-sonnet-20241022'    // Claude Sonnet 4
+  | 'claude-3-opus-20240229'        // Legacy Claude 3 Opus
+  | 'claude-3-sonnet-20240229'      // Legacy Claude 3 Sonnet
+  | 'claude-3-haiku-20240307';      // Claude 3 Haiku (keeping for efficiency)
+
 export type Recommendation = 'strong-buy' | 'buy' | 'watch' | 'pass';
 
 export interface Analysis {
@@ -67,16 +73,25 @@ export interface Analysis {
     innovation: number;
     team: number;
     market: number;
+    // New scores for enhanced analysis with Claude-4
+    technical_moat?: number;
+    scalability?: number;
+    developer_adoption?: number;
   };
   recommendation: Recommendation;
   summary: string;
   strengths: string[];
   risks: string[];
   questions: string[];
+  // New fields for enhanced Claude-4 analysis
+  growth_prediction?: string;
+  investment_thesis?: string;
+  competitive_analysis?: string;
   metadata: {
     model: ClaudeModel;
     cost: number;
     timestamp: string;
+    tokens_used?: number;
   };
 }
 
@@ -122,12 +137,22 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: 'claude-3-opus-20240229' as ClaudeModel,
-      medium: 'claude-3-sonnet-20240229' as ClaudeModel,
-      low: 'claude-3-haiku-20240307' as ClaudeModel,
+      high: 'claude-3-5-opus-20241022' as ClaudeModel,      // Claude Opus 4 for research-heavy analysis
+      medium: 'claude-3-5-sonnet-20241022' as ClaudeModel,   // Claude Sonnet 4 for standard analysis
+      low: 'claude-3-haiku-20240307' as ClaudeModel,         // Keep Haiku for efficiency
     },
-    thresholds: { high: 85, medium: 70 },
-    maxTokens: { opus: 8000, sonnet: 4000, haiku: 1000 },
+    thresholds: { 
+      high: 70,    // Lowered from 85 for aggressive Opus usage
+      medium: 50   // Lowered from 70 to use Sonnet-4 more
+    },
+    maxTokens: { 
+      opus: 16000,    // Doubled for deeper analysis
+      sonnet: 8000,   // Doubled from 4000
+      haiku: 1000     // Keep the same
+    },
+    // Feature flags for migration
+    useClaude4: true,
+    enhancedAnalysis: true,
   },
   alerts: {
     growthThreshold: 200, // percent

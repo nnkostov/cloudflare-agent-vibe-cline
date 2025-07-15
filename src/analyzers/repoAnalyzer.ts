@@ -1,6 +1,6 @@
-import type { Repository, Score, Env, SCORING } from '../types';
+import type { Repository, Score, Env, SCORING, ClaudeModel } from '../types';
 import { BaseService } from '../services/base';
-import { SCORING as ScoringConfig } from '../types';
+import { SCORING as ScoringConfig, CONFIG } from '../types';
 
 export class RepoAnalyzer extends BaseService {
   /**
@@ -154,7 +154,19 @@ export class RepoAnalyzer extends BaseService {
   /**
    * Get recommended Claude model based on score
    */
-  getRecommendedModel(score: Score): 'claude-3-opus-20240229' | 'claude-3-sonnet-20240229' | 'claude-3-haiku-20240307' {
+  getRecommendedModel(score: Score): ClaudeModel {
+    // Use Claude-4 models if enabled
+    if (CONFIG.claude.useClaude4) {
+      // Aggressive Opus-4 usage for high-potential repos
+      if (score.total >= CONFIG.claude.thresholds.high || score.growth >= 80) {
+        return CONFIG.claude.models.high; // claude-3-5-opus-20241022
+      } else if (score.total >= CONFIG.claude.thresholds.medium) {
+        return CONFIG.claude.models.medium; // claude-3-5-sonnet-20241022
+      }
+      return CONFIG.claude.models.low; // claude-3-haiku-20240307
+    }
+    
+    // Fallback to Claude-3 models
     if (score.total >= ScoringConfig.thresholds.veryHigh || score.growth >= 90) {
       return 'claude-3-opus-20240229';
     } else if (score.total >= ScoringConfig.thresholds.highPotential) {
