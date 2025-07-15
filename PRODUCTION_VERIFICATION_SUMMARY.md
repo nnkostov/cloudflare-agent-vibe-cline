@@ -89,7 +89,7 @@
 1. **openai/openai-python**
    - Investment Score: 88/100
    - Recommendation: Strong Buy
-   - Model: claude-3-5-sonnet-20241022
+   - Model: claude-opus-4 or claude-sonnet-4 (based on repository score)
    - Enhanced analysis with growth predictions
 
 2. **langchain-ai/langchain**
@@ -154,6 +154,6 @@ The system now uses Claude 3.5 Sonnet as the primary analysis model:
 - **Database**: github-intelligence (D1)
 - **Storage**: github-analyses (R2)
 - **Durable Object**: GITHUB_AGENT
-- **Primary Model**: Claude 3.5 Sonnet (claude-3-5-sonnet-20241022)
+- **Primary Model**: Claude 4 models (claude-opus-4 for high scores, claude-sonnet-4 for medium scores)
 
 The system is now ready for production use with Claude 3.5 Sonnet providing state-of-the-art AI analysis for high-potential GitHub repositories, generating comprehensive investment insights and alerts.

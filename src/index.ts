@@ -10,7 +10,8 @@ class WorkerService extends BaseService {
   private corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
   };
   private performanceMonitor: PerformanceMonitor;
 
@@ -32,27 +33,30 @@ class WorkerService extends BaseService {
       return this.handleApiRequest(request, url.pathname);
     }
     
-    // Default response
-    return new Response(
-      JSON.stringify({
-        name: 'GitHub AI Intelligence Agent',
-        version: '1.0.0',
-        endpoints: {
-          '/api/scan': 'POST - Scan GitHub for trending AI repositories',
-          '/api/scan/comprehensive': 'POST - Run comprehensive tiered scan',
-          '/api/analyze': 'POST - Analyze a specific repository',
-          '/api/repos/trending': 'GET - Get trending repositories',
-          '/api/repos/tier': 'GET - Get repositories by tier (1, 2, or 3)',
-          '/api/metrics/comprehensive': 'GET - Get comprehensive metrics for a repository',
-          '/api/alerts': 'GET - Get recent alerts',
-          '/api/reports/daily': 'GET - Get daily report',
-          '/api/reports/enhanced': 'GET - Get enhanced report with tier metrics',
-          '/api/status': 'GET - Get system status',
-          '/api/agent/init': 'POST - Initialize the agent'
+    // In development, return a simple HTML page that redirects to the Vite dev server
+    if (this.env.ENVIRONMENT === 'development') {
+      return new Response(
+        `<!DOCTYPE html>
+<html>
+<head>
+  <title>GitHub AI Intelligence</title>
+  <meta http-equiv="refresh" content="0; url=http://localhost:3003">
+</head>
+<body>
+  <p>Redirecting to development server at <a href="http://localhost:3003">http://localhost:3003</a>...</p>
+</body>
+</html>`,
+        { 
+          headers: { 
+            'Content-Type': 'text/html',
+            ...this.corsHeaders 
+          } 
         }
-      }),
-      { headers: { 'Content-Type': 'application/json', ...this.corsHeaders } }
-    );
+      );
+    }
+    
+    // In production, return 404 to let Cloudflare serve static assets
+    return new Response(null, { status: 404 });
   }
 
   private async handleApiRequest(request: Request, pathname: string): Promise<Response> {
@@ -293,17 +297,25 @@ class WorkerService extends BaseService {
 
   private async handleAgentInit(): Promise<Response> {
     return this.handleError(async () => {
-      // Initialize the agent by triggering a comprehensive scan
+      // Forward the initialization request to the Durable Object
       const id = this.env.GITHUB_AGENT.idFromName('main');
       const agent = this.env.GITHUB_AGENT.get(id);
       
-      // Schedule the next run
-      const nextRun = new Date();
-      nextRun.setHours(nextRun.getHours() + 6);
+      // Call the Durable Object's init endpoint
+      const initResponse = await agent.fetch(new Request('http://internal/init', {
+        method: 'POST'
+      }));
+      
+      if (!initResponse.ok) {
+        const error = await initResponse.text();
+        throw new Error(`Failed to initialize agent: ${error}`);
+      }
+      
+      const result = await initResponse.json() as any;
       
       return this.jsonResponse({
         message: 'Agent initialized successfully',
-        nextRun: nextRun.toISOString(),
+        nextRun: result.nextRun,
         status: 'ready'
       });
     }, 'initialize agent');
@@ -362,13 +374,19 @@ export default {
       return await worker.handleRequest(request);
     } catch (error) {
       console.error('Worker error:', error);
+      // Include CORS headers in error responses
       return new Response(
         JSON.stringify({ 
           error: error instanceof Error ? error.message : 'Internal server error' 
         }),
         { 
           status: 500,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
         }
       );
     }
@@ -376,5 +394,18 @@ export default {
   
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log('Scheduled event triggered:', event.cron);
+    
+    // Trigger comprehensive scan on schedule
+    try {
+      const id = env.GITHUB_AGENT.idFromName('main');
+      const agent = env.GITHUB_AGENT.get(id);
+      
+      // Trigger the alarm to run comprehensive scan
+      await agent.fetch(new Request('http://internal/alarm', {
+        method: 'POST'
+      }));
+    } catch (error) {
+      console.error('Scheduled scan error:', error);
+    }
   }
 };

@@ -9,6 +9,9 @@ export interface Env {
   // Secrets
   GITHUB_TOKEN: string;
   ANTHROPIC_API_KEY: string;
+  
+  // Environment variables
+  ENVIRONMENT?: string;
 }
 
 // GitHub API types
@@ -131,7 +134,9 @@ export interface Contributor {
 
 // Simplified Analysis types
 export type ClaudeModel = 
-  | 'claude-3-5-sonnet-20241022'    // Claude 3.5 Sonnet (latest)
+  | 'claude-opus-4'                 // Claude 4 Opus (latest)
+  | 'claude-sonnet-4'               // Claude 4 Sonnet (latest)
+  | 'claude-3-5-sonnet-20241022'    // Claude 3.5 Sonnet (fallback)
   | 'claude-3-5-sonnet-20240620'    // Claude 3.5 Sonnet (previous)
   | 'claude-3-opus-20240229'        // Claude 3 Opus
   | 'claude-3-sonnet-20240229'      // Claude 3 Sonnet
@@ -241,8 +246,8 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: 'claude-3-5-sonnet-20241022' as ClaudeModel,          // Claude 3.5 Sonnet (latest) for best analysis
-      medium: 'claude-3-5-sonnet-20240620' as ClaudeModel,        // Claude 3.5 Sonnet (previous) for standard analysis
+      high: 'claude-opus-4' as ClaudeModel,                       // Claude 4 Opus for best analysis
+      medium: 'claude-sonnet-4' as ClaudeModel,                   // Claude 4 Sonnet for standard analysis
       low: 'claude-3-haiku-20240307' as ClaudeModel,              // Claude 3 Haiku for efficiency
     },
     thresholds: { 

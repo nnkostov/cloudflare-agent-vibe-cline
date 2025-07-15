@@ -101,6 +101,8 @@ Alarm triggers → Scan GitHub → Analyze top repos → Set next alarm
 - **Score 50-69**: Claude-Sonnet-4 (standard analysis)
 - **Score < 50**: Claude-3-Haiku (quick scan)
 
+**IMPORTANT**: Always use Claude 4 models (`claude-opus-4`, `claude-sonnet-4`) for analysis, NOT the Claude 3.5 versions. The system has been updated to use these newer models exclusively.
+
 ### Analysis Output
 - Investment score (0-100)
 - Innovation, team, market scores

@@ -159,18 +159,18 @@ export class RepoAnalyzer extends BaseService {
     if (CONFIG.claude.useClaude4) {
       // Aggressive Opus-4 usage for high-potential repos
       if (score.total >= CONFIG.claude.thresholds.high || score.growth >= 80) {
-        return CONFIG.claude.models.high; // claude-3-5-opus-20241022
+        return CONFIG.claude.models.high; // claude-opus-4
       } else if (score.total >= CONFIG.claude.thresholds.medium) {
-        return CONFIG.claude.models.medium; // claude-3-5-sonnet-20241022
+        return CONFIG.claude.models.medium; // claude-sonnet-4
       }
       return CONFIG.claude.models.low; // claude-3-haiku-20240307
     }
     
     // Fallback to Claude-3 models
     if (score.total >= ScoringConfig.thresholds.veryHigh || score.growth >= 90) {
-      return 'claude-3-opus-20240229';
+      return 'claude-opus-4';
     } else if (score.total >= ScoringConfig.thresholds.highPotential) {
-      return 'claude-3-sonnet-20240229';
+      return 'claude-sonnet-4';
     }
     return 'claude-3-haiku-20240307';
   }

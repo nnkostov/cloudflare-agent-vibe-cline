@@ -25,10 +25,7 @@ bucket_name = "github-analyses"
 # Environment variables (will be set via wrangler secret)
 [vars]
 # GITHUB_TOKEN and ANTHROPIC_API_KEY will be set as secrets
-
-# Development settings
-[env.development]
-vars = { ENVIRONMENT = "development" }
+ENVIRONMENT = "development"
 
 # Production settings
 [env.production]
@@ -37,3 +34,7 @@ vars = { ENVIRONMENT = "production" }
 # Cron triggers for automated scanning
 [triggers]
 crons = ["0 */6 * * *"]  # Every 6 hours for comprehensive scan
+
+# Static assets configuration
+[site]
+bucket = "./dashboard/dist"

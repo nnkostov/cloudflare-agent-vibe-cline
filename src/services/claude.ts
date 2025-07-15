@@ -20,7 +20,7 @@ export class ClaudeService extends BaseService {
   async analyzeRepository(
     repo: Repository,
     readme: string,
-    model: ClaudeModel = 'claude-3-5-sonnet-20241022'
+    model: ClaudeModel = 'claude-sonnet-4'
   ): Promise<Analysis> {
     return this.performanceMonitor.monitor('claude-analyze', async () => {
       // Apply rate limiting before making the request
@@ -42,7 +42,8 @@ export class ClaudeService extends BaseService {
    * Check if model is Claude 3.5 Sonnet (latest generation)
    */
   private isClaudeV4Model(model: ClaudeModel): boolean {
-    return model === 'claude-3-5-sonnet-20241022' || model === 'claude-3-5-sonnet-20240620';
+    return model === 'claude-opus-4' || model === 'claude-sonnet-4' || 
+           model === 'claude-3-5-sonnet-20241022' || model === 'claude-3-5-sonnet-20240620';
   }
 
   /**
@@ -229,6 +230,8 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
   private estimateCost(model: ClaudeModel, responseLength: number): number {
     const tokens = responseLength * 0.25; // Rough estimate
     const pricing: Record<string, number> = {
+      'claude-opus-4': 15.00,              // Claude 4 Opus pricing
+      'claude-sonnet-4': 3.00,             // Claude 4 Sonnet pricing
       'claude-3-5-sonnet-20241022': 3.00,   // Claude 3.5 Sonnet pricing
       'claude-3-5-sonnet-20240620': 3.00,   // Claude 3.5 Sonnet pricing
       'claude-3-opus-20240229': 15.00,
