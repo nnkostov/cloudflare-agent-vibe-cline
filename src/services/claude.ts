@@ -39,7 +39,7 @@ export class ClaudeService extends BaseService {
   }
 
   /**
-   * Check if model is Claude v4
+   * Check if model is Claude 3.5 Sonnet (latest generation)
    */
   private isClaudeV4Model(model: ClaudeModel): boolean {
     return model === 'claude-3-5-sonnet-20241022' || model === 'claude-3-5-sonnet-20240620';

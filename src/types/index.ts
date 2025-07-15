@@ -241,13 +241,13 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: 'claude-3-opus-20240229' as ClaudeModel,              // Claude 3 Opus for research-heavy analysis
-      medium: 'claude-3-5-sonnet-20241022' as ClaudeModel,        // Claude 3.5 Sonnet for standard analysis
+      high: 'claude-3-5-sonnet-20241022' as ClaudeModel,          // Claude 3.5 Sonnet (latest) for best analysis
+      medium: 'claude-3-5-sonnet-20240620' as ClaudeModel,        // Claude 3.5 Sonnet (previous) for standard analysis
       low: 'claude-3-haiku-20240307' as ClaudeModel,              // Claude 3 Haiku for efficiency
     },
     thresholds: { 
-      high: 70,    // Lowered from 85 for aggressive Opus usage
-      medium: 50   // Lowered from 70 to use Sonnet-4 more
+      high: 70,    // Use latest Claude 3.5 Sonnet for high-value repos
+      medium: 50   // Use previous Claude 3.5 Sonnet for medium repos
     },
     maxTokens: { 
       opus: 4096,     // Claude Opus max limit
