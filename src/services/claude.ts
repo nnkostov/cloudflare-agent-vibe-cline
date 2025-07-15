@@ -1,6 +1,8 @@
 import type { Repository, Analysis, ClaudeModel, Env, CONFIG } from '../types';
 import { BaseService } from './base';
 import { CONFIG as Config } from '../types';
+import { claudeRateLimiter, withExponentialBackoff } from '../utils/rateLimiter';
+import { PerformanceMonitor } from '../utils/performanceMonitor';
 
 interface ClaudeResponse {
   content: Array<{ type: 'text'; text: string }>;
@@ -10,6 +12,7 @@ interface ClaudeResponse {
 
 export class ClaudeService extends BaseService {
   private apiUrl = 'https://api.anthropic.com/v1/messages';
+  private performanceMonitor = new PerformanceMonitor();
 
   /**
    * Analyze a repository using Claude
@@ -17,24 +20,29 @@ export class ClaudeService extends BaseService {
   async analyzeRepository(
     repo: Repository,
     readme: string,
-    model: ClaudeModel = 'claude-sonnet-4'
+    model: ClaudeModel = 'claude-3-5-sonnet-20241022'
   ): Promise<Analysis> {
-    return this.handleError(async () => {
-      const isEnhancedModel = this.isClaudeV4Model(model);
-      const prompt = isEnhancedModel && Config.claude.enhancedAnalysis
-        ? this.buildEnhancedPrompt(repo, readme)
-        : this.buildPrompt(repo, readme);
+    return this.performanceMonitor.monitor('claude-analyze', async () => {
+      // Apply rate limiting before making the request
+      await claudeRateLimiter.acquire();
       
-      const response = await this.callClaude(prompt, model);
-      return this.parseResponse(response, repo.id, model);
-    }, `analyze repository ${repo.full_name}`);
+      return this.handleError(async () => {
+        const isEnhancedModel = this.isClaudeV4Model(model);
+        const prompt = isEnhancedModel && Config.claude.enhancedAnalysis
+          ? this.buildEnhancedPrompt(repo, readme)
+          : this.buildPrompt(repo, readme);
+        
+        const response = await this.callClaude(prompt, model);
+        return this.parseResponse(response, repo.id, model);
+      }, `analyze repository ${repo.full_name}`);
+    }, { timeout: 60000 }); // 60 second timeout for Claude API
   }
 
   /**
    * Check if model is Claude v4
    */
   private isClaudeV4Model(model: ClaudeModel): boolean {
-    return model === 'claude-opus-4' || model === 'claude-sonnet-4';
+    return model === 'claude-3-5-sonnet-20241022' || model === 'claude-3-5-sonnet-20240620';
   }
 
   /**
@@ -124,35 +132,48 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
    * Call Claude API
    */
   private async callClaude(prompt: string, model: ClaudeModel): Promise<string> {
-    const response = await fetch(this.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: this.getMaxTokensForModel(model),
-        temperature: 0.3,
-      }),
+    return withExponentialBackoff(async () => {
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: this.getMaxTokensForModel(model),
+          temperature: 0.3,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        
+        // Check for rate limit errors
+        if (response.status === 429 || error.includes('rate limit')) {
+          throw new Error(`Claude API rate limit: ${response.status} - ${error}`);
+        }
+        
+        throw new Error(`Claude API error: ${response.status} - ${error}`);
+      }
+
+      const data = await response.json() as ClaudeResponse;
+      
+      // Log token usage for monitoring
+      if (data.usage) {
+        console.log(`Model: ${model}, Input: ${data.usage.input_tokens}, Output: ${data.usage.output_tokens}, Total: ${data.usage.input_tokens + data.usage.output_tokens}`);
+      }
+      
+      return data.content[0]?.text || '';
+    }, {
+      maxRetries: 3,
+      initialDelay: 2000,  // Start with 2 second delay
+      maxDelay: 60000,     // Max 1 minute delay
+      factor: 2,           // Double the delay each retry
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Claude API error: ${response.status} - ${error}`);
-    }
-
-    const data = await response.json() as ClaudeResponse;
-    
-    // Log token usage for monitoring
-    if (data.usage) {
-      console.log(`Model: ${model}, Tokens: ${data.usage.input_tokens + data.usage.output_tokens}`);
-    }
-    
-    return data.content[0]?.text || '';
   }
 
   /**
@@ -208,8 +229,8 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
   private estimateCost(model: ClaudeModel, responseLength: number): number {
     const tokens = responseLength * 0.25; // Rough estimate
     const pricing: Record<string, number> = {
-      'claude-opus-4': 15.00,              // Claude-4 Opus pricing (estimate)
-      'claude-sonnet-4': 3.00,             // Claude-4 Sonnet pricing (estimate)
+      'claude-3-5-sonnet-20241022': 3.00,   // Claude 3.5 Sonnet pricing
+      'claude-3-5-sonnet-20240620': 3.00,   // Claude 3.5 Sonnet pricing
       'claude-3-opus-20240229': 15.00,
       'claude-3-sonnet-20240229': 3.00,
       'claude-3-haiku-20240307': 0.25,
@@ -225,5 +246,19 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
     if (model.includes('sonnet')) return Config.claude.maxTokens.sonnet;
     if (model.includes('haiku')) return Config.claude.maxTokens.haiku;
     return Config.claude.maxTokens.sonnet; // default
+  }
+
+  /**
+   * Get current rate limit status
+   */
+  getRateLimitStatus() {
+    return claudeRateLimiter.getStatus();
+  }
+
+  /**
+   * Get performance metrics
+   */
+  getPerformanceMetrics() {
+    return this.performanceMonitor.getReport();
   }
 }

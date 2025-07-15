@@ -33,3 +33,7 @@ vars = { ENVIRONMENT = "development" }
 # Production settings
 [env.production]
 vars = { ENVIRONMENT = "production" }
+
+# Cron triggers for automated scanning
+[triggers]
+crons = ["0 */6 * * *"]  # Every 6 hours for comprehensive scan

@@ -8,6 +8,8 @@
     "deploy": "wrangler deploy",
     "test": "vitest",
     "test:ci": "vitest run",
+    "test:enhanced": "node test-enhanced-system.js",
+    "test:enhanced:prod": "set SKIP_SCAN_TEST=true && node test-enhanced-system.js",
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
