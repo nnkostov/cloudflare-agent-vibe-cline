@@ -1,0 +1,35 @@
+name = "github-ai-intelligence"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Durable Objects binding
+[[durable_objects.bindings]]
+name = "GITHUB_AGENT"
+class_name = "GitHubAgent"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GitHubAgent"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "github-intelligence"
+database_id = "90ad28ff-c07b-41c3-90bf-44da6f903687"
+
+# R2 Storage binding
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "github-analyses"
+
+# Environment variables (will be set via wrangler secret)
+[vars]
+# GITHUB_TOKEN and ANTHROPIC_API_KEY will be set as secrets
+
+# Development settings
+[env.development]
+vars = { ENVIRONMENT = "development" }
+
+# Production settings
+[env.production]
+vars = { ENVIRONMENT = "production" }
