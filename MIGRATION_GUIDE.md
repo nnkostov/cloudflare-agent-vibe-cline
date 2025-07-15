@@ -5,8 +5,8 @@ This guide documents the transition from Claude-3 models to Claude-4 (Opus & Son
 ## Overview of Changes
 
 ### Model Updates
-- **Primary Analysis Model**: `claude-3-opus-20240229` → `claude-3-5-opus-20241022` (Claude Opus 4)
-- **Secondary Model**: `claude-3-sonnet-20240229` → `claude-3-5-sonnet-20241022` (Claude Sonnet 4)
+- **Primary Analysis Model**: `claude-3-opus-20240229` → `claude-opus-4`
+- **Secondary Model**: `claude-3-sonnet-20240229` → `claude-sonnet-4`
 - **Quick Scan Model**: `claude-3-haiku-20240307` (unchanged for cost efficiency)
 
 ### Threshold Changes (Aggressive Strategy)
@@ -54,9 +54,9 @@ This guide documents the transition from Claude-3 models to Claude-4 (Opus & Son
 export const CONFIG = {
   claude: {
     models: {
-      high: 'claude-3-5-opus-20241022',      // Claude Opus 4
-      medium: 'claude-3-5-sonnet-20241022',   // Claude Sonnet 4
-      low: 'claude-3-haiku-20240307'         // Keep Haiku
+      high: 'claude-opus-4',              // Claude Opus 4
+      medium: 'claude-sonnet-4',          // Claude Sonnet 4
+      low: 'claude-3-haiku-20240307'     // Keep Haiku
     },
     thresholds: { 
       high: 70,    // Lowered from 85
@@ -99,7 +99,7 @@ The analysis endpoint now returns additional fields when using Claude-4:
   "investment_thesis": "2-3 paragraph investment case...",
   "competitive_analysis": "Market landscape and differentiation...",
   "metadata": {
-    "model": "claude-3-5-opus-20241022",
+    "model": "claude-opus-4",
     "cost": 0.24,
     "timestamp": "2025-01-14T19:00:00Z",
     "tokens_used": 4500
@@ -131,7 +131,7 @@ useClaude4: false
 ### Logging
 The system now logs model selection:
 ```
-Using model claude-3-5-opus-20241022 for owner/repo (score: 75, growth: 82)
+Using model claude-opus-4 for owner/repo (score: 75, growth: 82)
 ```
 
 ## Cost Implications

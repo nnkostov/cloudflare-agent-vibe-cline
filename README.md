@@ -16,14 +16,14 @@ An intelligent agent built on Cloudflare Workers that continuously monitors GitH
 
 The system uses an aggressive Claude-4 deployment strategy:
 
-- **Claude-3-5-Opus-20241022 (Claude Opus 4)**: Used for high-potential repositories (score ≥ 70) to perform research-heavy analysis including:
+- **Claude-Opus-4**: Used for high-potential repositories (score ≥ 70) to perform research-heavy analysis including:
   - Technical architecture deep-dive
   - Competitive landscape analysis
   - Growth trajectory predictions
   - Investment thesis generation
   - Enhanced scoring (technical moat, scalability, developer adoption)
 
-- **Claude-3-5-Sonnet-20241022 (Claude Sonnet 4)**: Used for medium-potential repositories (score 50-69) for solid standard analysis
+- **Claude-Sonnet-4**: Used for medium-potential repositories (score 50-69) for solid standard analysis
 
 - **Claude-3-Haiku-20240307**: Used for quick scans and low-priority repositories (score < 50) for cost optimization
 
@@ -126,9 +126,9 @@ Key configuration options in `src/types/index.ts`:
 ```typescript
 claude: {
   models: {
-    high: 'claude-3-5-opus-20241022',      // Claude Opus 4
-    medium: 'claude-3-5-sonnet-20241022',   // Claude Sonnet 4
-    low: 'claude-3-haiku-20240307'         // Claude 3 Haiku
+    high: 'claude-opus-4',              // Claude Opus 4
+    medium: 'claude-sonnet-4',          // Claude Sonnet 4
+    low: 'claude-3-haiku-20240307'     // Claude 3 Haiku
   },
   thresholds: { 
     high: 70,    // Lowered for aggressive Opus usage

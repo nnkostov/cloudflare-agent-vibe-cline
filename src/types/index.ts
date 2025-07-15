@@ -58,8 +58,8 @@ export interface Contributor {
 
 // Simplified Analysis types
 export type ClaudeModel = 
-  | 'claude-3-5-opus-20241022'      // Claude Opus 4
-  | 'claude-3-5-sonnet-20241022'    // Claude Sonnet 4
+  | 'claude-opus-4'                 // Claude Opus 4
+  | 'claude-sonnet-4'               // Claude Sonnet 4
   | 'claude-3-opus-20240229'        // Legacy Claude 3 Opus
   | 'claude-3-sonnet-20240229'      // Legacy Claude 3 Sonnet
   | 'claude-3-haiku-20240307';      // Claude 3 Haiku (keeping for efficiency)
@@ -137,9 +137,9 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: 'claude-3-5-opus-20241022' as ClaudeModel,      // Claude Opus 4 for research-heavy analysis
-      medium: 'claude-3-5-sonnet-20241022' as ClaudeModel,   // Claude Sonnet 4 for standard analysis
-      low: 'claude-3-haiku-20240307' as ClaudeModel,         // Keep Haiku for efficiency
+      high: 'claude-opus-4' as ClaudeModel,              // Claude Opus 4 for research-heavy analysis
+      medium: 'claude-sonnet-4' as ClaudeModel,          // Claude Sonnet 4 for standard analysis
+      low: 'claude-3-haiku-20240307' as ClaudeModel,     // Keep Haiku for efficiency
     },
     thresholds: { 
       high: 70,    // Lowered from 85 for aggressive Opus usage

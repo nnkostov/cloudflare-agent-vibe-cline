@@ -17,7 +17,7 @@ export class ClaudeService extends BaseService {
   async analyzeRepository(
     repo: Repository,
     readme: string,
-    model: ClaudeModel = 'claude-3-5-sonnet-20241022'
+    model: ClaudeModel = 'claude-sonnet-4'
   ): Promise<Analysis> {
     return this.handleError(async () => {
       const isEnhancedModel = this.isClaudeV4Model(model);
@@ -34,7 +34,7 @@ export class ClaudeService extends BaseService {
    * Check if model is Claude v4
    */
   private isClaudeV4Model(model: ClaudeModel): boolean {
-    return model.includes('claude-3-5');
+    return model === 'claude-opus-4' || model === 'claude-sonnet-4';
   }
 
   /**
@@ -208,8 +208,8 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
   private estimateCost(model: ClaudeModel, responseLength: number): number {
     const tokens = responseLength * 0.25; // Rough estimate
     const pricing: Record<string, number> = {
-      'claude-3-5-opus-20241022': 15.00,    // Claude-4 Opus pricing (estimate)
-      'claude-3-5-sonnet-20241022': 3.00,   // Claude-4 Sonnet pricing (estimate)
+      'claude-opus-4': 15.00,              // Claude-4 Opus pricing (estimate)
+      'claude-sonnet-4': 3.00,             // Claude-4 Sonnet pricing (estimate)
       'claude-3-opus-20240229': 15.00,
       'claude-3-sonnet-20240229': 3.00,
       'claude-3-haiku-20240307': 0.25,
