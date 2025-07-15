@@ -250,9 +250,9 @@ export const CONFIG = {
       medium: 50   // Lowered from 70 to use Sonnet-4 more
     },
     maxTokens: { 
-      opus: 16000,    // Doubled for deeper analysis
-      sonnet: 8000,   // Doubled from 4000
-      haiku: 1000     // Keep the same
+      opus: 4096,     // Claude Opus max limit
+      sonnet: 8192,   // Claude 3.5 Sonnet supports 8192
+      haiku: 4096     // Claude Haiku supports 4096
     },
     // Feature flags for migration
     useClaude4: true,
