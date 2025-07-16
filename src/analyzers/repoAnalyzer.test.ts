@@ -3,13 +3,13 @@ import { RepoAnalyzer } from './repoAnalyzer';
 import type { Repository, Env, Score } from '../types';
 
 describe('RepoAnalyzer', () => {
-  const mockEnv: Env = {
-    DB: {} as any,
-    STORAGE: {} as any,
-    GITHUB_AGENT: {} as any,
-    GITHUB_TOKEN: 'test-token',
-    ANTHROPIC_API_KEY: 'test-key'
-  };
+const mockEnv: Env = {
+  DB: {} as any,
+  STORAGE: {} as any,
+  GITHUB_AGENT: {} as any,
+  GITHUB_TOKEN: 'test-token',
+  ANTHROPIC_API_KEY: 'test-key',
+};
   
   const analyzer = new RepoAnalyzer(mockEnv);
 

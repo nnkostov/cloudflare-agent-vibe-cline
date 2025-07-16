@@ -1,0 +1,16 @@
+-- Drop all existing tables
+DROP TABLE IF EXISTS api_usage;
+DROP TABLE IF EXISTS fork_analysis;
+DROP TABLE IF EXISTS star_history;
+DROP TABLE IF EXISTS issue_metrics;
+DROP TABLE IF EXISTS pull_request_metrics;
+DROP TABLE IF EXISTS release_history;
+DROP TABLE IF EXISTS commit_metrics;
+DROP TABLE IF EXISTS repo_tiers;
+DROP TABLE IF EXISTS repository_tiers;
+DROP TABLE IF EXISTS trends;
+DROP TABLE IF EXISTS contributors;
+DROP TABLE IF EXISTS alerts;
+DROP TABLE IF EXISTS analyses;
+DROP TABLE IF EXISTS repo_metrics;
+DROP TABLE IF EXISTS repositories;

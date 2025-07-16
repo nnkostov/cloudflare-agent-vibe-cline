@@ -55,8 +55,81 @@ class WorkerService extends BaseService {
       );
     }
     
-    // In production, return 404 to let Cloudflare serve static assets
-    return new Response(null, { status: 404 });
+    // In production, we need to handle static assets differently
+    // Since this is a Workers deployment, static assets should be served from a separate domain
+    // or we need to configure asset handling properly
+    
+    // For now, return a simple HTML page that explains the setup
+    return new Response(
+      `<!DOCTYPE html>
+<html>
+<head>
+  <title>GitHub AI Intelligence - API</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+    h1 { color: #333; }
+    .info { background: #f0f0f0; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    code { background: #e0e0e0; padding: 2px 6px; border-radius: 3px; }
+    .endpoint { margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>GitHub AI Intelligence API</h1>
+  <div class="info">
+    <p>This is the API endpoint for the GitHub AI Intelligence system.</p>
+    <p>The dashboard should be deployed separately as a Cloudflare Pages project.</p>
+  </div>
+  
+  <h2>Available API Endpoints:</h2>
+  <div class="endpoint"><code>GET /api/status</code> - System status</div>
+  <div class="endpoint"><code>GET /api/repos/trending</code> - Get trending repositories</div>
+  <div class="endpoint"><code>GET /api/repos/tier?tier=1</code> - Get repositories by tier (1, 2, or 3)</div>
+  <div class="endpoint"><code>GET /api/alerts</code> - Get recent alerts</div>
+  <div class="endpoint"><code>GET /api/reports/daily</code> - Get daily report</div>
+  <div class="endpoint"><code>GET /api/reports/enhanced</code> - Get enhanced report</div>
+  <div class="endpoint"><code>POST /api/scan</code> - Trigger a scan</div>
+  <div class="endpoint"><code>POST /api/scan/comprehensive</code> - Trigger comprehensive scan</div>
+  <div class="endpoint"><code>POST /api/agent/init</code> - Initialize the agent</div>
+  
+  <div class="info">
+    <h3>Dashboard Deployment:</h3>
+    <p>To deploy the dashboard:</p>
+    <ol>
+      <li>Build the dashboard: <code>cd dashboard && npm run build</code></li>
+      <li>Deploy to Cloudflare Pages: <code>npx wrangler pages deploy dist</code></li>
+      <li>Configure the dashboard to use this API endpoint</li>
+    </ol>
+  </div>
+</body>
+</html>`,
+      { 
+        headers: { 
+          'Content-Type': 'text/html',
+          ...this.corsHeaders 
+        } 
+      }
+    );
+  }
+
+  private getContentType(path: string): string {
+    const ext = path.split('.').pop()?.toLowerCase();
+    const contentTypes: Record<string, string> = {
+      'html': 'text/html',
+      'js': 'application/javascript',
+      'css': 'text/css',
+      'json': 'application/json',
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml',
+      'ico': 'image/x-icon',
+      'woff': 'font/woff',
+      'woff2': 'font/woff2',
+      'ttf': 'font/ttf',
+      'otf': 'font/otf',
+    };
+    return contentTypes[ext || ''] || 'application/octet-stream';
   }
 
   private async handleApiRequest(request: Request, pathname: string): Promise<Response> {

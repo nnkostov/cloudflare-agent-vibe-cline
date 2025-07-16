@@ -16,22 +16,7 @@ export const queryClient = new QueryClient({
 
 // API client
 class ApiClient {
-  constructor() {
-    // Bind all methods to ensure 'this' context is preserved
-    this.request = this.request.bind(this);
-    this.getStatus = this.getStatus.bind(this);
-    this.getTrendingRepos = this.getTrendingRepos.bind(this);
-    this.getReposByTier = this.getReposByTier.bind(this);
-    this.analyzeRepository = this.analyzeRepository.bind(this);
-    this.getAlerts = this.getAlerts.bind(this);
-    this.getDailyReport = this.getDailyReport.bind(this);
-    this.getEnhancedReport = this.getEnhancedReport.bind(this);
-    this.triggerScan = this.triggerScan.bind(this);
-    this.triggerComprehensiveScan = this.triggerComprehensiveScan.bind(this);
-    this.initializeAgent = this.initializeAgent.bind(this);
-  }
-
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  private request = async <T>(endpoint: string, options?: RequestInit): Promise<T> => {
     const url = `${API_BASE_URL}${endpoint}`;
     
     console.log(`[API] ${options?.method || 'GET'} ${url}`);
@@ -80,7 +65,7 @@ class ApiClient {
   }
 
   // System status
-  async getStatus() {
+  getStatus = async () => {
     return this.request<{
       status: string;
       timestamp: string;
@@ -91,7 +76,7 @@ class ApiClient {
   }
 
   // Repositories
-  async getTrendingRepos() {
+  getTrendingRepos = async () => {
     return this.request<{
       repositories: Array<{
         id: string;
@@ -109,7 +94,7 @@ class ApiClient {
     }>('/repos/trending');
   }
 
-  async getReposByTier(tier: 1 | 2 | 3) {
+  getReposByTier = async (tier: 1 | 2 | 3) => {
     return this.request<{
       tier: number;
       count: number;
@@ -118,7 +103,7 @@ class ApiClient {
   }
 
   // Analysis
-  async analyzeRepository(owner: string, repo: string, force = false) {
+  analyzeRepository = async (owner: string, repo: string, force = false) => {
     return this.request<any>('/analyze', {
       method: 'POST',
       body: JSON.stringify({ repoOwner: owner, repoName: repo, force }),
@@ -126,7 +111,7 @@ class ApiClient {
   }
 
   // Alerts
-  async getAlerts() {
+  getAlerts = async () => {
     return this.request<{
       alerts: Array<{
         id: number;
@@ -141,7 +126,7 @@ class ApiClient {
   }
 
   // Reports
-  async getDailyReport() {
+  getDailyReport = async () => {
     return this.request<{
       date: string;
       high_growth_repos: any[];
@@ -152,7 +137,7 @@ class ApiClient {
     }>('/reports/daily');
   }
 
-  async getEnhancedReport() {
+  getEnhancedReport = async () => {
     return this.request<{
       date: string;
       tier_summary: any;
@@ -164,7 +149,7 @@ class ApiClient {
   }
 
   // Scanning
-  async triggerScan(options?: { topics?: string[]; minStars?: number }) {
+  triggerScan = async (options?: { topics?: string[]; minStars?: number }) => {
     return this.request<{
       message: string;
       repositoriesFound: number;
@@ -175,7 +160,7 @@ class ApiClient {
     });
   }
 
-  async triggerComprehensiveScan() {
+  triggerComprehensiveScan = async () => {
     return this.request<any>('/scan/comprehensive', {
       method: 'POST',
       body: JSON.stringify({}),
@@ -183,7 +168,7 @@ class ApiClient {
   }
 
   // Agent initialization
-  async initializeAgent() {
+  initializeAgent = async () => {
     return this.request<{
       message: string;
       nextRun: string;

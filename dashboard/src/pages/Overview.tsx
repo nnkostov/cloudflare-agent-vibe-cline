@@ -24,6 +24,15 @@ export default function Overview() {
     queryFn: api.getEnhancedReport,
   });
 
+  // Debug logging
+  console.log('[Overview] Data received:', JSON.stringify({
+    trending,
+    alerts,
+    report,
+    trendingTotal: trending?.total,
+    alertsLength: alerts?.alerts?.length,
+  }, null, 2));
+
   const isLoading = statusLoading || trendingLoading || alertsLoading || reportLoading;
 
   if (isLoading) {
@@ -67,7 +76,7 @@ export default function Overview() {
     },
     {
       title: 'Active Alerts',
-      value: formatNumber(alerts?.alerts.length || 0),
+      value: formatNumber(alerts?.alerts?.length || 0),
       icon: AlertTriangle,
       color: 'text-orange-600',
     },
