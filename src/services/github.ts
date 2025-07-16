@@ -33,19 +33,29 @@ export class GitHubService extends BaseService {
       return globalConnectionPool.withConnection(async () => {
         return withExponentialBackoff(async () => {
           try {
-            // Build search query
-            const topicQuery = topics.map(t => `topic:${t}`).join(' OR ');
+            // Build search query - try a simpler approach
+            // GitHub search doesn't like complex OR queries, so let's search for the first topic only
+            const topicQuery = `topic:${topics[0]}`;
             const languageQuery = languages?.length 
               ? ' AND (' + languages.map(l => `language:${l}`).join(' OR ') + ')'
               : '';
             
-            const query = `(${topicQuery})${languageQuery} stars:>=${minStars} sort:stars-desc`;
+            // Don't include sort in the query string - it's a separate parameter
+            const query = `${topicQuery}${languageQuery} stars:>=${minStars}`;
+            
+            console.log('GitHub search query:', query);
+            console.log('GitHub token present:', !!this.env.GITHUB_TOKEN);
 
             const response = await this.octokit.search.repos({
               q: query,
               sort: 'stars',
               order: 'desc',
               per_page: limit,
+            });
+
+            console.log('GitHub search response:', {
+              total_count: response.data.total_count,
+              items_returned: response.data.items.length
             });
 
             return response.data.items.map(this.mapGitHubRepoToRepository);

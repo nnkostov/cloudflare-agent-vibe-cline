@@ -49,9 +49,9 @@ export default function Overview() {
   const stats = [
     {
       title: 'System Status',
-      value: status?.status || 'Unknown',
+      value: status?.status === 'ok' ? 'Healthy' : status?.status || 'Unknown',
       icon: Activity,
-      color: status?.status === 'healthy' ? 'text-green-600' : 'text-yellow-600',
+      color: status?.status === 'ok' ? 'text-green-600' : 'text-yellow-600',
     },
     {
       title: 'Monitored Repos',

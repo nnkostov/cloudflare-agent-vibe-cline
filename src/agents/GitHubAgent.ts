@@ -6,11 +6,11 @@ import { StorageService } from '../services/storage';
 import { StorageEnhancedService } from '../services/storage-enhanced';
 import { RepoAnalyzer } from '../analyzers/repoAnalyzer';
 import { RepoAnalyzerEnhanced } from '../analyzers/repoAnalyzer-enhanced';
-import { BaseService } from '../services/base';
 import { CONFIG as Config } from '../types';
 
-export class GitHubAgent extends BaseService {
+export class GitHubAgent {
   private state: DurableObjectState;
+  private env: Env;
   private github: GitHubService;
   private githubEnhanced: GitHubEnhancedService;
   private claude: ClaudeService;
@@ -20,8 +20,8 @@ export class GitHubAgent extends BaseService {
   private analyzerEnhanced: RepoAnalyzerEnhanced;
 
   constructor(state: DurableObjectState, env: Env) {
-    super(env);
     this.state = state;
+    this.env = env;
     this.github = new GitHubService(env);
     this.githubEnhanced = new GitHubEnhancedService(env);
     this.claude = new ClaudeService(env);
@@ -29,6 +29,16 @@ export class GitHubAgent extends BaseService {
     this.storageEnhanced = new StorageEnhancedService(env);
     this.analyzer = new RepoAnalyzer(env);
     this.analyzerEnhanced = new RepoAnalyzerEnhanced(env);
+  }
+
+  /**
+   * Helper method to create JSON responses
+   */
+  private jsonResponse(data: any, status: number = 200): Response {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   async fetch(request: Request): Promise<Response> {

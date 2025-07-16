@@ -65,6 +65,7 @@ class WorkerService extends BaseService {
     // Handle direct endpoints
     const directHandlers: Record<string, () => Promise<Response>> = {
       '/repos/trending': () => this.handleTrendingRepos(),
+      '/repos/count': () => this.handleRepoCount(),
       '/repos/tier': () => this.handleReposByTier(request),
       '/metrics/comprehensive': () => this.handleComprehensiveMetrics(request),
       '/alerts': () => this.handleAlerts(),
@@ -87,11 +88,20 @@ class WorkerService extends BaseService {
     return agent.fetch(new Request(agentUrl, request));
   }
 
+  private async handleRepoCount(): Promise<Response> {
+    return this.handleError(async () => {
+      const { StorageServiceFixed } = await import('./services/storage-fix');
+      const storage = new StorageServiceFixed(this.env);
+      const count = await storage.getRepositoryCount();
+      return this.jsonResponse({ count });
+    }, 'get repository count');
+  }
+
   private async handleTrendingRepos(): Promise<Response> {
     return this.performanceMonitor.monitor('handleTrendingRepos', async () => {
       return this.handleError(async () => {
-        const { StorageService } = await import('./services/storage');
-        const storage = new StorageService(this.env);
+        const { StorageServiceFixed } = await import('./services/storage-fix');
+        const storage = new StorageServiceFixed(this.env);
         
         const repos = await storage.getHighGrowthRepos(30, 200);
         

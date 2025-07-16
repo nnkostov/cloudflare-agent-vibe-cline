@@ -16,6 +16,21 @@ export const queryClient = new QueryClient({
 
 // API client
 class ApiClient {
+  constructor() {
+    // Bind all methods to ensure 'this' context is preserved
+    this.request = this.request.bind(this);
+    this.getStatus = this.getStatus.bind(this);
+    this.getTrendingRepos = this.getTrendingRepos.bind(this);
+    this.getReposByTier = this.getReposByTier.bind(this);
+    this.analyzeRepository = this.analyzeRepository.bind(this);
+    this.getAlerts = this.getAlerts.bind(this);
+    this.getDailyReport = this.getDailyReport.bind(this);
+    this.getEnhancedReport = this.getEnhancedReport.bind(this);
+    this.triggerScan = this.triggerScan.bind(this);
+    this.triggerComprehensiveScan = this.triggerComprehensiveScan.bind(this);
+    this.initializeAgent = this.initializeAgent.bind(this);
+  }
+
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
     

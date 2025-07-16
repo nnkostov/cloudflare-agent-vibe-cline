@@ -99,7 +99,7 @@ export default function Controls() {
       )}
 
       {/* Connection Error */}
-      {statusError && (
+      {statusError && !status && (
         <div className="p-4 rounded-lg flex items-center bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
           <AlertCircle className="h-5 w-5 mr-2" />
           <span className="text-sm font-medium">
@@ -118,7 +118,7 @@ export default function Controls() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Current Status</p>
               <p className="text-lg font-medium text-gray-900 dark:text-white">
-                {status?.status === 'healthy' ? 'Active' : 'Inactive'}
+                {status?.status === 'ok' ? 'Active' : 'Inactive'}
               </p>
             </div>
             <button
