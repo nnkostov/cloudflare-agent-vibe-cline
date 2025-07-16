@@ -18,5 +18,5 @@
     "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+  "exclude": ["node_modules", "dist", "test", "src/index-backup.ts", "src/index-unified.ts", "src/index-without-scaninterval.ts"]
 }
