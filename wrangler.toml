@@ -2,6 +2,14 @@ name = "github-ai-intelligence"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
+# Static site configuration for dashboard
+[site]
+bucket = "./dashboard/dist"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/*.js", "**/*.json", "**/*.svg", "**/*.ico"]
+
 # Durable Objects binding
 [[durable_objects.bindings]]
 name = "GITHUB_AGENT"
@@ -25,16 +33,12 @@ bucket_name = "github-analyses"
 # Environment variables (will be set via wrangler secret)
 [vars]
 # GITHUB_TOKEN and ANTHROPIC_API_KEY will be set as secrets
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
 
-# Production settings
-[env.production]
-vars = { ENVIRONMENT = "production" }
+# Development settings
+[env.development]
+vars = { ENVIRONMENT = "development" }
 
 # Cron triggers for automated scanning
 [triggers]
 crons = ["0 */6 * * *"]  # Every 6 hours for comprehensive scan
-
-# Static assets configuration
-[site]
-bucket = "./dashboard/dist"

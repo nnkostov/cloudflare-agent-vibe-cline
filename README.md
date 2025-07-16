@@ -10,22 +10,24 @@ An intelligent agent built on Cloudflare Workers that continuously monitors GitH
 - **Alert System**: Real-time notifications for high-potential opportunities
 - **Trend Detection**: Identifies emerging patterns and technologies
 - **Contributor Analysis**: Profiles key developers and teams
-- **Caching**: Efficient data storage to minimize API calls
+- **Comprehensive Metrics**: Tracks commits, releases, PRs, issues, stars, and forks
+- **Tier-Based Scanning**: Prioritizes repositories based on importance
+- **Dashboard**: React-based visualization for insights and analytics
 
 ## Claude Model Strategy
 
-The system uses an aggressive Claude-4 deployment strategy:
+The system uses an intelligent Claude deployment strategy based on repository tiers:
 
-- **Claude-Opus-4**: Used for high-potential repositories (score ≥ 70) to perform research-heavy analysis including:
+- **Claude-Opus-4**: Used for high-potential repositories (Tier 1) to perform research-heavy analysis including:
   - Technical architecture deep-dive
   - Competitive landscape analysis
   - Growth trajectory predictions
   - Investment thesis generation
   - Enhanced scoring (technical moat, scalability, developer adoption)
 
-- **Claude-Sonnet-4**: Used for medium-potential repositories (score 50-69) for solid standard analysis
+- **Claude-Sonnet-4**: Used for medium-potential repositories (Tier 2) for solid standard analysis
 
-- **Claude-3-Haiku-20240307**: Used for quick scans and low-priority repositories (score < 50) for cost optimization
+- **Claude-3-Haiku-20240307**: Used for quick scans and low-priority repositories (Tier 3) for cost optimization
 
 ## Architecture
 
@@ -40,6 +42,11 @@ The system uses an aggressive Claude-4 deployment strategy:
                         │  D1 Database     │
                         │  R2 Storage      │
                         └──────────────────┘
+                               │
+                               ▼
+                        ┌──────────────────┐
+                        │  React Dashboard │
+                        └──────────────────┘
 ```
 
 ## Setup
@@ -53,6 +60,7 @@ cd cloudflare-agent-vibe-cline
 2. Install dependencies:
 ```bash
 npm install
+cd dashboard && npm install && cd ..
 ```
 
 3. Configure environment variables:
@@ -74,7 +82,7 @@ wrangler r2 bucket create github-agent-storage
 
 5. Initialize the database:
 ```bash
-wrangler d1 execute github-agent-db --file=./schema.sql
+wrangler d1 execute github-agent-db --file=./schema-complete.sql
 ```
 
 6. Deploy:
@@ -84,102 +92,153 @@ npm run deploy
 
 ## API Endpoints
 
-### Initialize Agent
+### Core Endpoints
+
+#### Initialize Agent
 ```bash
-POST /agent/init
+POST /api/agent/init
 ```
 Initializes the agent and sets up scheduled scanning.
 
-### Manual Scan
+#### Get Status
 ```bash
-POST /agent/scan
-{
-  "topics": ["ai", "llm", "agents"],
-  "minStars": 100
-}
+GET /api/status
 ```
+Returns system status including rate limits and performance metrics.
 
-### Analyze Repository
+### Repository Endpoints
+
+#### Get Repository Count
 ```bash
-POST /agent/analyze
-{
-  "repoOwner": "owner",
-  "repoName": "repo",
-  "force": false
-}
+GET /api/repos/count
 ```
 
-### Get Status
+#### Get Trending Repositories
 ```bash
-GET /agent/status
+GET /api/repos/trending
 ```
 
-### Generate Report
+#### Get Repositories by Tier
 ```bash
-GET /agent/report
+GET /api/repos/tier?tier=1
 ```
 
-## Configuration
+### Metrics Endpoints
 
-Key configuration options in `src/types/index.ts`:
-
-```typescript
-claude: {
-  models: {
-    high: 'claude-opus-4',              // Claude Opus 4
-    medium: 'claude-sonnet-4',          // Claude Sonnet 4
-    low: 'claude-3-haiku-20240307'     // Claude 3 Haiku
-  },
-  thresholds: { 
-    high: 70,    // Lowered for aggressive Opus usage
-    medium: 50   // Lowered to use Sonnet-4 more
-  },
-  maxTokens: { 
-    opus: 16000,    // Doubled for deeper analysis
-    sonnet: 8000,   // Doubled from 4000
-    haiku: 1000     // Keep the same
-  }
-}
+#### Get Comprehensive Metrics
+```bash
+GET /api/metrics/comprehensive?repo_id=123456
 ```
 
-## Enhanced Analysis Features
+### Reports
 
-With Claude-4 models, the system now provides:
+#### Daily Report
+```bash
+GET /api/reports/daily
+```
 
-1. **Extended Scoring Metrics**:
-   - Technical moat assessment
-   - Scalability evaluation
-   - Developer adoption tracking
+#### Enhanced Report
+```bash
+GET /api/reports/enhanced
+```
 
-2. **Predictive Analytics**:
-   - 6-12 month growth trajectory predictions
-   - Market timing analysis
+### Alerts
 
-3. **Investment Intelligence**:
-   - Detailed investment thesis generation
-   - Competitive landscape analysis
-   - Strategic due diligence questions
+#### Get Recent Alerts
+```bash
+GET /api/alerts
+```
+
+## Tier System
+
+The system uses a three-tier classification for repositories:
+
+### Tier 1 (High Priority)
+- Stars: ≥100 with >10% growth velocity
+- Scan frequency: Every 3-6 hours
+- Analysis: Claude Opus-4 for deep insights
+
+### Tier 2 (Medium Priority)
+- Stars: ≥50
+- Scan frequency: Every 12-24 hours
+- Analysis: Claude Sonnet-4 for standard analysis
+
+### Tier 3 (Low Priority)
+- Stars: <50
+- Scan frequency: Every 48-168 hours
+- Analysis: Claude Haiku for quick assessment
+
+## Dashboard
+
+The React dashboard provides:
+
+- **Overview**: Key metrics and system health
+- **Leaderboard**: Top repositories by various metrics
+- **Analysis**: Detailed repository insights
+- **Alerts**: Real-time notifications
+- **Reports**: Daily and enhanced reports
+- **Controls**: System management
+
+Access the dashboard at your deployed URL after running:
+```bash
+cd dashboard
+npm run build
+cd ..
+npm run deploy
+```
 
 ## Development
 
-Run tests:
+### Run tests:
 ```bash
 npm test
 ```
 
-Run locally:
+### Run locally:
 ```bash
+# Terminal 1: Run the worker
+npm run dev
+
+# Terminal 2: Run the dashboard
+cd dashboard
 npm run dev
 ```
 
+### Test enhanced metrics collection:
+```bash
+node test-enhanced-system.js
+```
+
+## Unified Services
+
+The codebase uses unified services that combine basic and enhanced functionality:
+
+- **GitHubService**: All GitHub API operations and metrics collection
+- **StorageService**: All database operations including tier management
+- **RepoAnalyzer**: Comprehensive analysis and tier calculation
+- **GitHubAgent**: Orchestrates scanning and analysis operations
+
+See [Unified Services API Documentation](docs/UNIFIED_SERVICES_API.md) for detailed API reference.
+
 ## Cost Considerations
 
-The aggressive Claude-4 strategy prioritizes analysis quality over cost:
-- Opus-4 is used for ~30-40% of analyzed repositories
-- Sonnet-4 handles another ~30-40%
-- Haiku manages the remaining low-priority scans
+The tier-based strategy optimizes costs while maintaining quality:
+- Tier 1 repositories get premium analysis with Opus-4
+- Tier 2 repositories receive solid analysis with Sonnet-4
+- Tier 3 repositories are efficiently scanned with Haiku
 
-Monitor your Anthropic API usage to manage costs effectively.
+Monitor your usage:
+- GitHub API: 5,000 requests/hour (authenticated)
+- Claude API: Based on your Anthropic plan
+- Cloudflare: Workers and D1 usage
+
+## Performance Optimizations
+
+- **Batch Operations**: Process multiple items efficiently
+- **Rate Limiting**: Built-in limiters prevent API exhaustion
+- **Caching**: D1 stores results to minimize API calls
+- **Streaming**: Large datasets use streaming for memory efficiency
+- **Connection Pooling**: Reuses database connections
 
 ## License
 

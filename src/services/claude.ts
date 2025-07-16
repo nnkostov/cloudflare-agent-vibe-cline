@@ -1,8 +1,7 @@
 import type { Repository, Analysis, ClaudeModel, Env, CONFIG } from '../types';
 import { BaseService } from './base';
 import { CONFIG as Config } from '../types';
-import { claudeRateLimiter, withExponentialBackoff } from '../utils/rateLimiter';
-import { PerformanceMonitor } from '../utils/performanceMonitor';
+import { claudeRateLimiter, withExponentialBackoff } from '../utils/simpleRateLimiter';
 
 interface ClaudeResponse {
   content: Array<{ type: 'text'; text: string }>;
@@ -12,7 +11,6 @@ interface ClaudeResponse {
 
 export class ClaudeService extends BaseService {
   private apiUrl = 'https://api.anthropic.com/v1/messages';
-  private performanceMonitor = new PerformanceMonitor();
 
   /**
    * Analyze a repository using Claude
@@ -22,20 +20,21 @@ export class ClaudeService extends BaseService {
     readme: string,
     model: ClaudeModel = 'claude-sonnet-4'
   ): Promise<Analysis> {
-    return this.performanceMonitor.monitor('claude-analyze', async () => {
-      // Apply rate limiting before making the request
-      await claudeRateLimiter.acquire();
+    // Check rate limit
+    if (!await claudeRateLimiter.checkLimit()) {
+      const waitTime = claudeRateLimiter.getWaitTime();
+      throw new Error(`Rate limit exceeded. Please wait ${waitTime}ms`);
+    }
+    
+    return this.handleError(async () => {
+      const isEnhancedModel = this.isClaudeV4Model(model);
+      const prompt = isEnhancedModel && Config.claude.enhancedAnalysis
+        ? this.buildEnhancedPrompt(repo, readme)
+        : this.buildPrompt(repo, readme);
       
-      return this.handleError(async () => {
-        const isEnhancedModel = this.isClaudeV4Model(model);
-        const prompt = isEnhancedModel && Config.claude.enhancedAnalysis
-          ? this.buildEnhancedPrompt(repo, readme)
-          : this.buildPrompt(repo, readme);
-        
-        const response = await this.callClaude(prompt, model);
-        return this.parseResponse(response, repo.id, model);
-      }, `analyze repository ${repo.full_name}`);
-    }, { timeout: 60000 }); // 60 second timeout for Claude API
+      const response = await this.callClaude(prompt, model);
+      return this.parseResponse(response, repo.id, model);
+    }, `analyze repository ${repo.full_name}`);
   }
 
   /**
@@ -169,12 +168,7 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
       }
       
       return data.content[0]?.text || '';
-    }, {
-      maxRetries: 3,
-      initialDelay: 2000,  // Start with 2 second delay
-      maxDelay: 60000,     // Max 1 minute delay
-      factor: 2,           // Double the delay each retry
-    });
+    }, 3); // maxRetries parameter
   }
 
   /**
@@ -256,12 +250,5 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
    */
   getRateLimitStatus() {
     return claudeRateLimiter.getStatus();
-  }
-
-  /**
-   * Get performance metrics
-   */
-  getPerformanceMetrics() {
-    return this.performanceMonitor.getReport();
   }
 }

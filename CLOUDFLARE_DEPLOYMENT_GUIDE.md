@@ -42,7 +42,12 @@ npx wrangler d1 execute github-ai-agent --file=schema-complete.sql
 ```bash
 # Deploy the worker and durable object
 npx wrangler deploy
+
+# Or explicitly deploy to production environment
+npx wrangler deploy --env production
 ```
+
+**Important**: The default deployment now uses `ENVIRONMENT = "production"` to prevent localhost redirects. For development deployments, use `npx wrangler deploy --env development`.
 
 ### Step 4: Verify Deployment
 ```bash
