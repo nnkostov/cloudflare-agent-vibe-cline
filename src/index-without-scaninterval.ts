@@ -158,10 +158,6 @@ class WorkerService extends BaseService {
       '/reports/enhanced': () => this.handleEnhancedReport(),
       '/agent/init': () => this.handleAgentInit(),
       '/status': () => this.handleStatus(),
-      '/diagnostics/data-freshness': () => this.handleDataFreshness(),
-      '/diagnostics/scan-history': () => this.handleScanHistory(),
-      '/diagnostics/table-check': () => this.handleTableCheck(),
-      '/diagnostics/system-health': () => this.handleSystemHealth(),
     };
 
     const handler = directHandlers[agentPath];
@@ -422,11 +418,9 @@ class WorkerService extends BaseService {
 
   private async handleStatus(): Promise<Response> {
     return this.handleError(async () => {
-      // Import rate limiters and CONFIG
+      // Import rate limiters
       const { githubRateLimiter, githubSearchRateLimiter, claudeRateLimiter } = 
         await import('./utils/rateLimiter');
-      const { CONFIG } = await import('./types');
-      const { DiagnosticsService } = await import('./services/diagnostics');
       
       // Get rate limit statuses
       const rateLimits = {
@@ -438,20 +432,10 @@ class WorkerService extends BaseService {
       // Get performance metrics
       const performanceMetrics = this.performanceMonitor.getReport();
       
-      // Get system health
-      const diagnostics = new DiagnosticsService(this.env);
-      const [systemHealth, tierDistribution] = await Promise.all([
-        diagnostics.getSystemHealth(),
-        diagnostics.getTierDistribution()
-      ]);
-      
       return this.jsonResponse({
         status: 'ok',
         timestamp: new Date().toISOString(),
         environment: 'cloudflare-workers',
-        scanInterval: CONFIG.github.scanInterval,
-        systemHealth,
-        tierDistribution,
         rateLimits: {
           github: {
             ...rateLimits.github,
@@ -475,94 +459,6 @@ class WorkerService extends BaseService {
         },
       });
     }, 'get system status');
-  }
-
-  // New diagnostic endpoints
-  private async handleDataFreshness(): Promise<Response> {
-    return this.handleError(async () => {
-      const { DiagnosticsService } = await import('./services/diagnostics');
-      const diagnostics = new DiagnosticsService(this.env);
-      const freshness = await diagnostics.checkDataFreshness();
-      
-      return this.jsonResponse({
-        timestamp: new Date().toISOString(),
-        dataFreshness: freshness,
-        summary: {
-          fresh: freshness.filter(f => !f.isStale).length,
-          stale: freshness.filter(f => f.isStale).length,
-          total: freshness.length
-        }
-      });
-    }, 'check data freshness');
-  }
-
-  private async handleScanHistory(): Promise<Response> {
-    return this.handleError(async () => {
-      const { DiagnosticsService } = await import('./services/diagnostics');
-      const diagnostics = new DiagnosticsService(this.env);
-      const history = await diagnostics.getScanHistory(10);
-      
-      return this.jsonResponse({
-        timestamp: new Date().toISOString(),
-        scanHistory: history,
-        summary: {
-          successfulScans: history.filter(h => h.success).length,
-          failedScans: history.filter(h => !h.success).length,
-          totalReposScanned: history.reduce((sum, h) => sum + h.reposScanned, 0),
-          totalAnalyses: history.reduce((sum, h) => sum + h.analysesPerformed, 0)
-        }
-      });
-    }, 'get scan history');
-  }
-
-  private async handleTableCheck(): Promise<Response> {
-    return this.handleError(async () => {
-      const { DiagnosticsService } = await import('./services/diagnostics');
-      const diagnostics = new DiagnosticsService(this.env);
-      const tables = await diagnostics.checkTables();
-      
-      const missingTables = tables.filter(t => t.rowCount === -1);
-      const emptyTables = tables.filter(t => t.rowCount === 0);
-      const populatedTables = tables.filter(t => t.rowCount > 0);
-      
-      return this.jsonResponse({
-        timestamp: new Date().toISOString(),
-        tables,
-        summary: {
-          total: tables.length,
-          missing: missingTables.length,
-          empty: emptyTables.length,
-          populated: populatedTables.length,
-          missingTableNames: missingTables.map(t => t.name),
-          totalRows: tables.reduce((sum, t) => sum + (t.rowCount > 0 ? t.rowCount : 0), 0)
-        }
-      });
-    }, 'check tables');
-  }
-
-  private async handleSystemHealth(): Promise<Response> {
-    return this.handleError(async () => {
-      const { DiagnosticsService } = await import('./services/diagnostics');
-      const diagnostics = new DiagnosticsService(this.env);
-      
-      const [health, staleRepos, tierDistribution] = await Promise.all([
-        diagnostics.getSystemHealth(),
-        diagnostics.getStaleRepositories(24),
-        diagnostics.getTierDistribution()
-      ]);
-      
-      return this.jsonResponse({
-        timestamp: new Date().toISOString(),
-        health,
-        staleRepositories: staleRepos,
-        tierDistribution,
-        quickActions: {
-          runMigration: health.missingTables.includes('repo_tiers'),
-          initializeAgent: health.lastScanStatus === 'unknown',
-          checkLogs: health.lastScanStatus === 'failed'
-        }
-      });
-    }, 'get system health');
   }
 }
 

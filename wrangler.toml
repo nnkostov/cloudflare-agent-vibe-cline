@@ -41,4 +41,4 @@ vars = { ENVIRONMENT = "development" }
 
 # Cron triggers for automated scanning
 [triggers]
-crons = ["0 */6 * * *"]  # Every 6 hours for comprehensive scan
+crons = ["0 * * * *"]  # Every hour for comprehensive scan

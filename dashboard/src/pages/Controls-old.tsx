@@ -190,7 +190,7 @@ export default function Controls() {
               <h4 className="font-medium text-gray-900 dark:text-white">Automatic Scanning</h4>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              The agent automatically scans repositories every {status?.scanInterval || 1} hour{status?.scanInterval !== 1 ? 's' : ''} when initialized.
+              The agent automatically scans repositories every 6 hours when initialized.
             </p>
           </div>
         </CardContent>

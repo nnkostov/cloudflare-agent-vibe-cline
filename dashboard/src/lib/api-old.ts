@@ -70,7 +70,6 @@ class ApiClient {
       status: string;
       timestamp: string;
       environment: string;
-      scanInterval?: number;
       rateLimits: Record<string, any>;
       performance: Record<string, any>;
     }>('/status');

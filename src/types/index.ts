@@ -211,14 +211,14 @@ export const CONFIG = {
   github: {
     topics: ['ai', 'llm', 'agents', 'machine-learning', 'gpt', 'langchain'],
     minStars: 100,
-    scanInterval: 6, // hours
+    scanInterval: 1, // hours
     // Comprehensive scanning configuration
     tiers: {
       hot: {
         maxRepos: 200,
         minStars: 100,
         scanDepth: 'deep', // All metrics
-        scanFrequency: 6, // hours
+        scanFrequency: 1, // hours
       },
       rising: {
         maxRepos: 1000,

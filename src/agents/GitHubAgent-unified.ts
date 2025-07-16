@@ -207,9 +207,20 @@ export class GitHubAgent {
         commits_count: 0,
         recorded_at: new Date().toISOString()
       });
+      
+      // Calculate and assign initial tier
+      const growthVelocity = repo.stars / Math.max(1, 
+        (Date.now() - new Date(repo.created_at).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      
+      await this.storage.updateRepoTier(repo.id, {
+        stars: repo.stars,
+        growth_velocity: growthVelocity,
+        engagement_score: 50, // Initial estimate
+      });
     }
     
-    console.log(`Found ${repos.length} repositories`);
+    console.log(`Found ${repos.length} repositories and assigned tiers`);
     return repos;
   }
 
@@ -301,12 +312,13 @@ export class GitHubAgent {
     
     try {
       const startTime = Date.now();
-      await this.comprehensiveScan();
+      const result = await this.comprehensiveScan();
       const duration = Date.now() - startTime;
       
       return this.jsonResponse({ 
         message: 'Comprehensive scan completed',
         duration: `${Math.round(duration / 1000)}s`,
+        processed: result.processed,
         tiers: {
           tier1: await this.storage.getReposByTier(1, 10),
           tier2: await this.storage.getReposByTier(2, 10),
@@ -360,205 +372,215 @@ export class GitHubAgent {
   /**
    * Comprehensive repository scanning with tiered approach
    */
-  private async comprehensiveScan(): Promise<void> {
+  private async comprehensiveScan(): Promise<{ processed: number }> {
     console.log('Starting comprehensive repository scan...');
     
-    // 1. Discover new repositories using multiple strategies
-    const allRepos = await this.github.searchComprehensive(
-      Config.github.searchStrategies,
-      Config.limits.reposPerScan
-    );
+    const startTime = Date.now();
+    const MAX_RUNTIME = 45000; // 45 seconds max runtime
+    let processed = 0;
     
-    console.log(`Found ${allRepos.length} repositories across all strategies`);
+    // Skip discovery phase - repos should already be in DB from Quick Scan
+    // Just process existing repos that need analysis
     
-    // 2. Save discovered repositories and assign tiers
-    for (const repo of allRepos) {
-      await this.storage.saveRepository(repo);
-      
-      // Calculate initial tier assignment
-      const growthVelocity = repo.stars / Math.max(1, 
-        (Date.now() - new Date(repo.created_at).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      
-      await this.storage.updateRepoTier(repo.id, {
-        stars: repo.stars,
-        growth_velocity: growthVelocity,
-        engagement_score: 50, // Initial estimate
-      });
+    // Process each tier with time limits
+    const tier1Result = await this.processTier1Repos(MAX_RUNTIME - (Date.now() - startTime));
+    processed += tier1Result;
+    
+    if (Date.now() - startTime < MAX_RUNTIME) {
+      const tier2Result = await this.processTier2Repos(MAX_RUNTIME - (Date.now() - startTime));
+      processed += tier2Result;
     }
     
-    // 3. Process each tier
-    await this.processTier1Repos();
-    await this.processTier2Repos();
-    await this.processTier3Repos();
+    if (Date.now() - startTime < MAX_RUNTIME) {
+      const tier3Result = await this.processTier3Repos(MAX_RUNTIME - (Date.now() - startTime));
+      processed += tier3Result;
+    }
+    
+    console.log(`Comprehensive scan completed. Processed ${processed} repositories`);
+    return { processed };
   }
 
   /**
    * Process Tier 1 repositories (deep scan)
    */
-  private async processTier1Repos(): Promise<void> {
+  private async processTier1Repos(maxRuntime: number): Promise<number> {
     console.log('Processing Tier 1 repositories...');
+    const startTime = Date.now();
     const tier1Repos = await this.storage.getReposNeedingScan(1, 'deep');
     console.log(`Found ${tier1Repos.length} Tier 1 repos needing scan`);
     
-    // Process in batches to stay within CPU limits
-    const BATCH_SIZE = 20;
+    let processed = 0;
+    const MAX_BATCH = 10; // Process max 10 repos per run
     
-    for (let i = 0; i < tier1Repos.length; i += BATCH_SIZE) {
-      const batch = tier1Repos.slice(i, i + BATCH_SIZE);
+    for (const repoId of tier1Repos.slice(0, MAX_BATCH)) {
+      if (Date.now() - startTime > maxRuntime) {
+        console.log('Tier 1 processing time limit reached');
+        break;
+      }
       
-      for (const repoId of batch) {
-        const repo = await this.storage.getRepository(repoId);
-        if (!repo) continue;
+      const repo = await this.storage.getRepository(repoId);
+      if (!repo) continue;
+      
+      try {
+        // Collect all enhanced metrics
+        const [commits, releases, prs, issues, stars, forks] = await Promise.all([
+          this.github.getCommitActivity(repo.owner, repo.name),
+          this.github.getReleaseMetrics(repo.owner, repo.name),
+          this.github.getPullRequestMetrics(repo.owner, repo.name),
+          this.github.getIssueMetrics(repo.owner, repo.name),
+          this.github.getStarHistory(repo.owner, repo.name),
+          this.github.analyzeForkNetwork(repo.owner, repo.name),
+        ]);
         
-        try {
-          // Collect all enhanced metrics
-          const [commits, releases, prs, issues, stars, forks] = await Promise.all([
-            this.github.getCommitActivity(repo.owner, repo.name),
-            this.github.getReleaseMetrics(repo.owner, repo.name),
-            this.github.getPullRequestMetrics(repo.owner, repo.name),
-            this.github.getIssueMetrics(repo.owner, repo.name),
-            this.github.getStarHistory(repo.owner, repo.name),
-            this.github.analyzeForkNetwork(repo.owner, repo.name),
-          ]);
-          
-          // Save metrics with repo_id
-          await this.saveMetricsWithRepoId(repoId, { commits, releases, prs, issues, stars, forks });
-          
-          // Analyze with enhanced metrics (without releases)
-          const score = await this.analyzer.analyze(repo, {
-            commits, pullRequests: prs, issues, stars, forks
-          });
-          
-          // Update tier based on new score
-          const tier = this.analyzer.calculateTier(repo, score, { commits, prs, issues, stars, forks });
-          
-          await this.storage.updateRepoTier(repoId, {
-            stars: repo.stars,
-            growth_velocity: score.factors?.growth_velocity || 0,
-            engagement_score: score.engagement,
-          });
-          
-          // Mark as scanned
-          await this.storage.markRepoScanned(repoId, 'deep');
-          
-          // If high potential, run Claude analysis
-          if (this.analyzer.isHighPotential(score)) {
-            await this.analyzeRepository(repo);
-          }
-          
-          // Rate limiting
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-          console.error(`Error processing tier 1 repo ${repo.full_name}:`, error);
+        // Save metrics with repo_id
+        await this.saveMetricsWithRepoId(repoId, { commits, releases, prs, issues, stars, forks });
+        
+        // Analyze with enhanced metrics (without releases)
+        const score = await this.analyzer.analyze(repo, {
+          commits, pullRequests: prs, issues, stars, forks
+        });
+        
+        // Update tier based on new score
+        await this.storage.updateRepoTier(repoId, {
+          stars: repo.stars,
+          growth_velocity: score.factors?.growth_velocity || 0,
+          engagement_score: score.engagement,
+        });
+        
+        // Mark as scanned
+        await this.storage.markRepoScanned(repoId, 'deep');
+        
+        // If high potential, run Claude analysis
+        if (this.analyzer.isHighPotential(score)) {
+          await this.analyzeRepository(repo);
         }
+        
+        processed++;
+        
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.error(`Error processing tier 1 repo ${repo.full_name}:`, error);
       }
     }
+    
+    return processed;
   }
 
   /**
    * Process Tier 2 repositories (basic scan)
    */
-  private async processTier2Repos(): Promise<void> {
+  private async processTier2Repos(maxRuntime: number): Promise<number> {
     console.log('Processing Tier 2 repositories...');
+    const startTime = Date.now();
     const tier2Repos = await this.storage.getReposNeedingScan(2, 'basic');
     console.log(`Found ${tier2Repos.length} Tier 2 repos needing scan`);
     
-    const BATCH_SIZE = 50;
+    let processed = 0;
+    const MAX_BATCH = 20; // Process max 20 repos per run
     
-    for (let i = 0; i < tier2Repos.length; i += BATCH_SIZE) {
-      const batch = tier2Repos.slice(i, i + BATCH_SIZE);
+    for (const repoId of tier2Repos.slice(0, MAX_BATCH)) {
+      if (Date.now() - startTime > maxRuntime) {
+        console.log('Tier 2 processing time limit reached');
+        break;
+      }
       
-      for (const repoId of batch) {
-        const repo = await this.storage.getRepository(repoId);
-        if (!repo) continue;
+      const repo = await this.storage.getRepository(repoId);
+      if (!repo) continue;
+      
+      try {
+        // Collect basic metrics only
+        const [stars, issues] = await Promise.all([
+          this.github.getStarHistory(repo.owner, repo.name, 7),
+          this.github.getIssueMetrics(repo.owner, repo.name, 7),
+        ]);
         
-        try {
-          // Collect basic metrics only
-          const [stars, issues] = await Promise.all([
-            this.github.getStarHistory(repo.owner, repo.name, 7),
-            this.github.getIssueMetrics(repo.owner, repo.name, 7),
-          ]);
-          
-          // Save basic metrics
-          await this.storage.saveStarHistory(
-            stars.map(s => ({ ...s, repo_id: repoId }))
-          );
-          if (issues) {
-            await this.storage.saveIssueMetrics({ ...issues, repo_id: repoId });
-          }
-          
-          // Basic analysis
-          const score = await this.analyzer.analyze(repo, { stars, issues });
-          
-          // Check for promotion to Tier 1
-          if (score.growth > 70 || repo.stars >= 100) {
-            await this.storage.updateRepoTier(repoId, {
-              stars: repo.stars,
-              growth_velocity: score.factors?.growth_velocity || 0,
-              engagement_score: score.engagement,
-            });
-          }
-          
-          await this.storage.markRepoScanned(repoId, 'basic');
-          
-          // Lighter rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (error) {
-          console.error(`Error processing tier 2 repo ${repo.full_name}:`, error);
+        // Save basic metrics
+        await this.storage.saveStarHistory(
+          stars.map(s => ({ ...s, repo_id: repoId }))
+        );
+        if (issues) {
+          await this.storage.saveIssueMetrics({ ...issues, repo_id: repoId });
         }
+        
+        // Basic analysis
+        const score = await this.analyzer.analyze(repo, { stars, issues });
+        
+        // Check for promotion to Tier 1
+        if (score.growth > 70 || repo.stars >= 100) {
+          await this.storage.updateRepoTier(repoId, {
+            stars: repo.stars,
+            growth_velocity: score.factors?.growth_velocity || 0,
+            engagement_score: score.engagement,
+          });
+        }
+        
+        await this.storage.markRepoScanned(repoId, 'basic');
+        processed++;
+        
+        // Lighter rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        console.error(`Error processing tier 2 repo ${repo.full_name}:`, error);
       }
     }
+    
+    return processed;
   }
 
   /**
    * Process Tier 3 repositories (minimal scan)
    */
-  private async processTier3Repos(): Promise<void> {
+  private async processTier3Repos(maxRuntime: number): Promise<number> {
     console.log('Processing Tier 3 repositories...');
+    const startTime = Date.now();
     const tier3Repos = await this.storage.getReposNeedingScan(3, 'basic');
     console.log(`Found ${tier3Repos.length} Tier 3 repos needing scan`);
     
+    let processed = 0;
+    const MAX_BATCH = 30; // Process max 30 repos per run
+    
     // Batch process for efficiency
-    const batchSize = 50;
-    for (let i = 0; i < tier3Repos.length; i += batchSize) {
-      const batch = tier3Repos.slice(i, i + batchSize);
+    const batch = tier3Repos.slice(0, MAX_BATCH);
+    
+    await Promise.all(batch.map(async (repoId) => {
+      if (Date.now() - startTime > maxRuntime) {
+        return;
+      }
       
-      await Promise.all(batch.map(async (repoId) => {
-        const repo = await this.storage.getRepository(repoId);
-        if (!repo) return;
+      const repo = await this.storage.getRepository(repoId);
+      if (!repo) return;
+      
+      try {
+        // Just update basic metrics
+        await this.storage.saveMetrics({
+          repo_id: repoId,
+          stars: repo.stars,
+          forks: repo.forks,
+          open_issues: repo.open_issues,
+          watchers: repo.stars,
+          contributors: Math.ceil(repo.forks * 0.1),
+          commits_count: 0,
+          recorded_at: new Date().toISOString(),
+        });
         
-        try {
-          // Just update basic metrics
-          await this.storage.saveMetrics({
-            repo_id: repoId,
+        // Check for promotion
+        if (repo.stars >= 50) {
+          await this.storage.updateRepoTier(repoId, {
             stars: repo.stars,
-            forks: repo.forks,
-            open_issues: repo.open_issues,
-            watchers: repo.stars,
-            contributors: Math.ceil(repo.forks * 0.1),
-            commits_count: 0,
-            recorded_at: new Date().toISOString(),
+            growth_velocity: 0,
+            engagement_score: 30,
           });
-          
-          // Check for promotion
-          if (repo.stars >= 50) {
-            await this.storage.updateRepoTier(repoId, {
-              stars: repo.stars,
-              growth_velocity: 0,
-              engagement_score: 30,
-            });
-          }
-          
-          await this.storage.markRepoScanned(repoId, 'basic');
-        } catch (error) {
-          console.error(`Error processing tier 3 repo ${repo.full_name}:`, error);
         }
-      }));
-      
-      // Rate limiting between batches
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+        
+        await this.storage.markRepoScanned(repoId, 'basic');
+        processed++;
+      } catch (error) {
+        console.error(`Error processing tier 3 repo ${repo.full_name}:`, error);
+      }
+    }));
+    
+    return processed;
   }
 
   /**

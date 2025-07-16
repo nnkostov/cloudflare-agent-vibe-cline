@@ -30,7 +30,7 @@ export class GitHubService extends BaseService {
     topics: string[],
     minStars: number = 100,
     languages?: string[],
-    limit: number = 30
+    limit: number = 100
   ): Promise<Repository[]> {
     // Check rate limit
     if (!await githubSearchRateLimiter.checkLimit()) {

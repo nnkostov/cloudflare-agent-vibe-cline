@@ -297,12 +297,27 @@ class WorkerService extends BaseService {
       
       const { StorageService } = await import('./services/storage-unified');
       const storage = new StorageService(this.env);
-      const repos = await storage.getReposByTier(tier as 1 | 2 | 3);
+      
+      // Get tier data first
+      const tierData = await storage.getReposByTier(tier as 1 | 2 | 3);
+      
+      // Extract repo IDs and fetch full repository data
+      const repoIds = tierData.map(t => t.repo_id);
+      const repos = await storage.getRepositoriesByIds(repoIds);
+      
+      // Add tier info and latest analysis to each repo
+      const reposWithAnalysis = await Promise.all(
+        repos.slice(0, 100).map(async (repo) => ({
+          ...repo,
+          tier,
+          latest_analysis: await storage.getLatestAnalysis(repo.id)
+        }))
+      );
       
       return this.jsonResponse({ 
         tier, 
         count: repos.length, 
-        repos: repos.slice(0, 100) 
+        repos: reposWithAnalysis
       });
     }, 'get repos by tier');
   }
@@ -343,7 +358,7 @@ class WorkerService extends BaseService {
           const metrics = await storage.getComprehensiveMetrics(repo.id);
           const analysis = await storage.getLatestAnalysis(repo.id);
           return {
-            repository: repo,
+            ...repo,  // Spread the repo properties directly
             metrics: {
               commits: metrics.commits.length,
               releases: metrics.releases.length,
@@ -369,9 +384,9 @@ class WorkerService extends BaseService {
       return this.jsonResponse({
         date: new Date().toISOString(),
         tier_summary: {
-          tier1: { count: tier1.length, repos: tier1.slice(0, 5) },
-          tier2: { count: tier2.length, repos: tier2.slice(0, 5) },
-          tier3: { count: tier3.length, repos: tier3.slice(0, 5) },
+          '1': { count: tier1.length, repos: tier1.slice(0, 5) },
+          '2': { count: tier2.length, repos: tier2.slice(0, 5) },
+          '3': { count: tier3.length, repos: tier3.slice(0, 5) },
         },
         high_growth_repos_with_metrics: topReposWithMetrics,
         recent_alerts: recentAlerts.slice(0, 5),
