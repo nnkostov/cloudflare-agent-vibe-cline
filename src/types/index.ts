@@ -113,11 +113,13 @@ export interface ForkAnalysis {
 export interface RepoTier {
   repo_id: string;
   tier: 1 | 2 | 3; // 1: Hot prospects, 2: Rising stars, 3: Long tail
+  stars: number; // Added to match database schema
   last_deep_scan: string | null;
   last_basic_scan: string | null;
   growth_velocity: number | null;
   engagement_score: number | null;
   scan_priority: number;
+  next_scan_due: string; // Added to match database schema
 }
 
 export interface Contributor {

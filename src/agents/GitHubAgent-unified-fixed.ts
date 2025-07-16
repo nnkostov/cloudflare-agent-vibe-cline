@@ -135,7 +135,7 @@ export class GitHubAgent {
     }
     
     // Perform analysis
-    const analysis = await this.analyzeRepository(repo);
+    const analysis = await this.analyzeRepository(repo, force);
     
     return this.jsonResponse({ 
       message: 'Analysis completed',
@@ -238,7 +238,7 @@ export class GitHubAgent {
           continue;
         }
         
-        await this.analyzeRepository(repo);
+        await this.analyzeRepository(repo, true); // Force analysis
         await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit
       } catch (error) {
         console.error(`Error analyzing ${repo.full_name}:`, error);
@@ -249,15 +249,15 @@ export class GitHubAgent {
   /**
    * Analyze a single repository
    */
-  private async analyzeRepository(repo: Repository) {
+  private async analyzeRepository(repo: Repository, force: boolean = false) {
     console.log(`Analyzing repository: ${repo.full_name}`);
     
     // Get initial score
     const score = await this.analyzer.analyze(repo);
     console.log(`Score for ${repo.full_name}: ${score.total}`);
     
-    // Check if worth deep analysis
-    if (!this.analyzer.isHighPotential(score)) {
+    // For forced analysis or Tier 1 repos, always analyze
+    if (!force && !this.analyzer.isHighPotential(score)) {
       console.log(`${repo.full_name} does not meet threshold for deep analysis`);
       return null;
     }
@@ -318,7 +318,9 @@ export class GitHubAgent {
       return this.jsonResponse({ 
         message: 'Comprehensive scan completed',
         duration: `${Math.round(duration / 1000)}s`,
+        discovered: result.discovered,
         processed: result.processed,
+        analyzed: result.analyzed,
         tiers: {
           tier1: await this.storage.getReposByTier(1, 10),
           tier2: await this.storage.getReposByTier(2, 10),
@@ -486,21 +488,24 @@ export class GitHubAgent {
   /**
    * Process Tier 2 repositories (basic scan)
    */
-  private async processTier2Repos(maxRuntime: number): Promise<number> {
+  private async processTier2Repos(maxRuntime: number): Promise<{ processed: number, analyzed: number }> {
     console.log('Processing Tier 2 repositories...');
     const startTime = Date.now();
     const tier2Repos = await this.storage.getReposNeedingScan(2, 'basic');
     console.log(`Found ${tier2Repos.length} Tier 2 repos needing scan`);
     
     let processed = 0;
+    let analyzed = 0;
     const MAX_BATCH = 20; // Process max 20 repos per run
+    const ANALYZE_TOP = 5; // Analyze top 5 Tier 2 repos
     
-    for (const repoId of tier2Repos.slice(0, MAX_BATCH)) {
+    for (let i = 0; i < tier2Repos.length && i < MAX_BATCH; i++) {
       if (Date.now() - startTime > maxRuntime) {
         console.log('Tier 2 processing time limit reached');
         break;
       }
       
+      const repoId = tier2Repos[i];
       const repo = await this.storage.getRepository(repoId);
       if (!repo) continue;
       
@@ -531,6 +536,15 @@ export class GitHubAgent {
           });
         }
         
+        // Analyze top Tier 2 repos with Claude AI
+        if (i < ANALYZE_TOP && !await this.storage.hasRecentAnalysis(repo.id)) {
+          console.log(`Running Claude AI analysis for top Tier 2 repo: ${repo.full_name}`);
+          const analysis = await this.analyzeRepository(repo, true); // Force analysis
+          if (analysis) {
+            analyzed++;
+          }
+        }
+        
         await this.storage.markRepoScanned(repoId, 'basic');
         processed++;
         
@@ -541,13 +555,13 @@ export class GitHubAgent {
       }
     }
     
-    return processed;
+    return { processed, analyzed };
   }
 
   /**
    * Process Tier 3 repositories (minimal scan)
    */
-  private async processTier3Repos(maxRuntime: number): Promise<number> {
+  private async processTier3Repos(maxRuntime: number): Promise<{ processed: number }> {
     console.log('Processing Tier 3 repositories...');
     const startTime = Date.now();
     const tier3Repos = await this.storage.getReposNeedingScan(3, 'basic');
@@ -596,7 +610,7 @@ export class GitHubAgent {
       }
     }));
     
-    return processed;
+    return { processed };
   }
 
   /**

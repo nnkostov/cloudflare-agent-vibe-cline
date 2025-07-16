@@ -394,12 +394,12 @@ export class StorageService extends BaseService {
   async saveRepoTier(tier: RepoTier): Promise<void> {
     await this.env.DB.prepare(`
       INSERT OR REPLACE INTO repo_tiers 
-      (repo_id, tier, last_deep_scan, last_basic_scan, 
-       growth_velocity, engagement_score, scan_priority, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      (repo_id, tier, stars, last_deep_scan, last_basic_scan, 
+       growth_velocity, engagement_score, scan_priority, next_scan_due, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `).bind(
-      tier.repo_id, tier.tier, tier.last_deep_scan, tier.last_basic_scan,
-      tier.growth_velocity, tier.engagement_score, tier.scan_priority
+      tier.repo_id, tier.tier, tier.stars, tier.last_deep_scan, tier.last_basic_scan,
+      tier.growth_velocity, tier.engagement_score, tier.scan_priority, tier.next_scan_due
     ).run();
   }
 
@@ -443,14 +443,26 @@ export class StorageService extends BaseService {
       Math.log10(metrics.stars + 1) * 0.2
     );
 
+    // Calculate next scan due based on tier
+    const hoursUntilNextScan = {
+      1: 1,    // Tier 1: scan every hour
+      2: 24,   // Tier 2: scan every 24 hours
+      3: 168   // Tier 3: scan every week
+    };
+    
+    const nextScanDue = new Date();
+    nextScanDue.setHours(nextScanDue.getHours() + hoursUntilNextScan[tier]);
+
     await this.saveRepoTier({
       repo_id: repoId,
       tier,
+      stars: metrics.stars,
       last_deep_scan: null,
       last_basic_scan: null,
       growth_velocity: metrics.growth_velocity,
       engagement_score: metrics.engagement_score,
       scan_priority: scanPriority,
+      next_scan_due: nextScanDue.toISOString(),
     });
   }
 

@@ -5,7 +5,7 @@ import { PerformanceMonitor } from './utils/performanceMonitor';
 import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 
 // Re-export the Durable Object
-export { GitHubAgent } from './agents/GitHubAgent-unified';
+export { default as GitHubAgent } from './agents/GitHubAgent-unified-fixed';
 
 // @ts-ignore
 import manifestJSON from '__STATIC_CONTENT_MANIFEST';
