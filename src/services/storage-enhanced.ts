@@ -367,12 +367,12 @@ export class StorageEnhancedService extends BaseService {
     try {
       // Determine tier based on metrics
       let tier: 1 | 2 | 3;
-      if (metrics.stars >= 100 && metrics.growth_velocity > 10) {
-        tier = 1; // Hot prospect
-      } else if (metrics.stars >= 50) {
-        tier = 2; // Rising star
+      if (metrics.stars >= 500 && metrics.growth_velocity > 20) {
+        tier = 1; // Hot prospect - very selective
+      } else if (metrics.stars >= 100 || metrics.growth_velocity > 10) {
+        tier = 2; // Rising star - moderately selective
       } else {
-        tier = 3; // Long tail
+        tier = 3; // Long tail - everything else (catch-all)
       }
 
       // Calculate scan priority
