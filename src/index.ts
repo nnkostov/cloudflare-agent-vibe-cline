@@ -5,7 +5,7 @@ import { PerformanceMonitor } from './utils/performanceMonitor';
 import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 
 // Re-export the Durable Object
-export { default as GitHubAgent } from './agents/GitHubAgent-unified-fixed';
+export { default as GitHubAgent } from './agents/GitHubAgent-fixed-comprehensive';
 
 // @ts-ignore
 import manifestJSON from '__STATIC_CONTENT_MANIFEST';
@@ -162,6 +162,12 @@ class WorkerService extends BaseService {
       '/diagnostics/scan-history': () => this.handleScanHistory(),
       '/diagnostics/table-check': () => this.handleTableCheck(),
       '/diagnostics/system-health': () => this.handleSystemHealth(),
+      '/logs/recent': () => this.handleRecentLogs(request),
+      '/logs/errors': () => this.handleLogErrors(request),
+      '/logs/performance': () => this.handleLogPerformance(request),
+      '/logs/api-usage': () => this.handleAPIUsage(request),
+      '/logs/scan-activity': () => this.handleScanActivity(request),
+      '/logs/critical-alerts': () => this.handleCriticalAlerts(request),
     };
 
     const handler = directHandlers[agentPath];
@@ -179,8 +185,8 @@ class WorkerService extends BaseService {
 
   private async handleRepoCount(): Promise<Response> {
     return this.handleError(async () => {
-      const { StorageServiceFixed } = await import('./services/storage-fix');
-      const storage = new StorageServiceFixed(this.env);
+        const { StorageUnifiedService } = await import('./services/storage-unified');
+        const storage = new StorageUnifiedService(this.env);
       const count = await storage.getRepositoryCount();
       return this.jsonResponse({ count });
     }, 'get repository count');
@@ -189,10 +195,15 @@ class WorkerService extends BaseService {
   private async handleTrendingRepos(): Promise<Response> {
     return this.performanceMonitor.monitor('handleTrendingRepos', async () => {
       return this.handleError(async () => {
-        const { StorageServiceFixed } = await import('./services/storage-fix');
-        const storage = new StorageServiceFixed(this.env);
+        const { StorageUnifiedService } = await import('./services/storage-unified');
+        const storage = new StorageUnifiedService(this.env);
         
+        // Use the hybrid approach that works with or without historical data
         const repos = await storage.getHighGrowthRepos(30, 200);
+        
+        // Log which approach was used
+        const hasHistoricalData = repos.some(r => r.growth_percent !== undefined);
+        console.log(`Trending repos: Using ${hasHistoricalData ? 'historical growth data' : 'hybrid trending algorithm'}`);
         
         // For large datasets, use streaming
         if (repos.length > 50) {
@@ -206,14 +217,20 @@ class WorkerService extends BaseService {
           for (let i = 0; i < Math.min(repos.length, 100); i++) {
             const repo = repos[i];
             const analysis = await storage.getLatestAnalysis(repo.id);
-            const repoData = { ...repo, latest_analysis: analysis };
+            const repoData = { 
+              ...repo, 
+              latest_analysis: analysis,
+              trending_reason: repo.trending_factors ? 
+                this.getTrendingReason(repo.trending_factors) : 
+                'High growth rate'
+            };
             
             if (i > 0) await writer.write(new TextEncoder().encode(','));
             await writer.write(new TextEncoder().encode(JSON.stringify(repoData)));
           }
           
           // Write closing
-          await writer.write(new TextEncoder().encode(`],"total":${repos.length}}`));
+          await writer.write(new TextEncoder().encode(`],"total":${repos.length},"data_source":"${hasHistoricalData ? 'historical' : 'hybrid'}"}`));
           await writer.close();
           
           return new Response(stream.readable, {
@@ -229,16 +246,42 @@ class WorkerService extends BaseService {
         const reposWithAnalysis = await Promise.all(
           repos.slice(0, 20).map(async (repo) => ({
             ...repo,
-            latest_analysis: await storage.getLatestAnalysis(repo.id)
+            latest_analysis: await storage.getLatestAnalysis(repo.id),
+            trending_reason: repo.trending_factors ? 
+              this.getTrendingReason(repo.trending_factors) : 
+              'High growth rate'
           }))
         );
         
         return this.jsonResponse({
           repositories: reposWithAnalysis,
-          total: repos.length
+          total: repos.length,
+          data_source: hasHistoricalData ? 'historical' : 'hybrid'
         });
       }, 'get trending repos');
     });
+  }
+
+  /**
+   * Get a human-readable trending reason based on factors
+   */
+  private getTrendingReason(factors: Record<string, number>): string {
+    const reasons = [];
+    
+    if (factors.starVelocity > 70) {
+      reasons.push('Rapid star growth');
+    }
+    if (factors.recentActivity > 80) {
+      reasons.push('Very active development');
+    }
+    if (factors.momentum > 60) {
+      reasons.push('Strong momentum');
+    }
+    if (factors.forkActivity > 50) {
+      reasons.push('High community engagement');
+    }
+    
+    return reasons.length > 0 ? reasons.join(', ') : 'Trending repository';
   }
 
   private async handleAlerts(): Promise<Response> {
@@ -304,8 +347,8 @@ class WorkerService extends BaseService {
         return this.jsonResponse({ error: 'Invalid tier. Must be 1, 2, or 3' }, 400);
       }
       
-      const { StorageEnhancedService } = await import('./services/storage-enhanced');
-      const storage = new StorageEnhancedService(this.env);
+      const { StorageUnifiedService } = await import('./services/storage-unified');
+      const storage = new StorageUnifiedService(this.env);
       const repos = await storage.getReposByTier(tier as 1 | 2 | 3);
       
       return this.jsonResponse({ 
@@ -563,6 +606,125 @@ class WorkerService extends BaseService {
         }
       });
     }, 'get system health');
+  }
+
+  // Log analysis endpoints
+  private async handleRecentLogs(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      const limit = parseInt(url.searchParams.get('limit') || '100');
+      const level = url.searchParams.get('level') as any;
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      const logs = await logsService.queryLogs({
+        startTime: new Date(Date.now() - hours * 60 * 60 * 1000).toISOString(),
+        limit,
+        level,
+      });
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        count: logs.length,
+        logs,
+      });
+    }, 'get recent logs');
+  }
+
+  private async handleLogErrors(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      const errors = await logsService.getErrorSummary(hours);
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        totalErrors: errors.reduce((sum, e) => sum + e.count, 0),
+        uniqueErrors: errors.length,
+        errors,
+      });
+    }, 'get log errors');
+  }
+
+  private async handleLogPerformance(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      const metrics = await logsService.getPerformanceMetrics(hours);
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        metrics,
+      });
+    }, 'get log performance');
+  }
+
+  private async handleAPIUsage(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      const usage = await logsService.getAPIUsage(hours);
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        usage,
+      });
+    }, 'get API usage');
+  }
+
+  private async handleScanActivity(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      const activity = await logsService.getScanActivity(hours);
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        activity,
+      });
+    }, 'get scan activity');
+  }
+
+  private async handleCriticalAlerts(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      const alerts = await logsService.getCriticalAlerts(hours);
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        count: alerts.length,
+        alerts,
+      });
+    }, 'get critical alerts');
   }
 }
 

@@ -136,13 +136,14 @@ export interface Contributor {
 
 // Simplified Analysis types
 export type ClaudeModel = 
-  | 'claude-opus-4'                 // Claude 4 Opus (latest)
-  | 'claude-sonnet-4'               // Claude 4 Sonnet (latest)
+  | 'claude-opus-4-20250514'        // Claude 4 Opus (latest, most capable)
+  | 'claude-sonnet-4-20250514'      // Claude 4 Sonnet (latest, balanced)
   | 'claude-3-5-sonnet-20241022'    // Claude 3.5 Sonnet (fallback)
   | 'claude-3-5-sonnet-20240620'    // Claude 3.5 Sonnet (previous)
   | 'claude-3-opus-20240229'        // Claude 3 Opus
   | 'claude-3-sonnet-20240229'      // Claude 3 Sonnet
-  | 'claude-3-haiku-20240307';      // Claude 3 Haiku
+  | 'claude-3-haiku-20240307'       // Claude 3 Haiku
+  | 'claude-3-5-haiku-20241022';    // Claude 3.5 Haiku (fast)
 
 export type Recommendation = 'strong-buy' | 'buy' | 'watch' | 'pass';
 
@@ -248,9 +249,9 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: 'claude-opus-4' as ClaudeModel,                       // Claude 4 Opus for best analysis
-      medium: 'claude-sonnet-4' as ClaudeModel,                   // Claude 4 Sonnet for standard analysis
-      low: 'claude-3-haiku-20240307' as ClaudeModel,              // Claude 3 Haiku for efficiency
+      high: 'claude-opus-4-20250514' as ClaudeModel,              // Claude 4 Opus - most capable model
+      medium: 'claude-sonnet-4-20250514' as ClaudeModel,          // Claude 4 Sonnet - balanced performance
+      low: 'claude-3-5-haiku-20241022' as ClaudeModel,            // Claude 3.5 Haiku for efficiency
     },
     thresholds: { 
       high: 70,    // Use latest Claude 3.5 Sonnet for high-value repos

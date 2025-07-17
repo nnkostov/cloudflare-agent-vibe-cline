@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 export default function Controls() {
   const queryClient = useQueryClient();
   const [isScanning, setIsScanning] = useState(false);
+  const [forceMode, setForceMode] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const { data: status, error: statusError } = useQuery({
@@ -65,12 +66,30 @@ export default function Controls() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['trending'] });
       queryClient.invalidateQueries({ queryKey: ['enhanced-report'] });
+      
+      // Log progress details if available
+      if (data.progress) {
+        console.log('Comprehensive Scan Progress:', data.progress);
+        if (data.progress.errors && data.progress.errors.length > 0) {
+          console.error('Scan Errors:', data.progress.errors);
+        }
+      }
+      
+      const message = data.progress 
+        ? `Comprehensive scan completed in ${data.duration}! Discovered: ${data.discovered}, Processed: ${data.processed}, Analyzed: ${data.analyzed}`
+        : `Comprehensive scan completed in ${data.duration}!`;
+      
       setStatusMessage({ 
         type: 'success', 
-        message: `Comprehensive scan completed in ${data.duration}!` 
+        message
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      // Log error details if available
+      if (error.progress) {
+        console.error('Scan Progress at Error:', error.progress);
+      }
+      
       setStatusMessage({ 
         type: 'error', 
         message: `Comprehensive scan failed: ${error.message}` 
@@ -168,8 +187,21 @@ export default function Controls() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Full tiered scan with enhanced metrics
               </p>
+              <div className="mb-3">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={forceMode}
+                    onChange={(e) => setForceMode(e.target.checked)}
+                    className="mr-2 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Force scan (process at least 10 repos)
+                  </span>
+                </label>
+              </div>
               <button
-                onClick={() => comprehensiveScanMutation.mutate()}
+                onClick={() => comprehensiveScanMutation.mutate(forceMode)}
                 disabled={comprehensiveScanMutation.isPending || isScanning}
                 className="w-full flex items-center justify-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50"
               >

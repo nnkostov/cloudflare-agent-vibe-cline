@@ -169,7 +169,7 @@ export default function Controls() {
                 Full tiered scan with enhanced metrics
               </p>
               <button
-                onClick={() => comprehensiveScanMutation.mutate()}
+                onClick={() => comprehensiveScanMutation.mutate(false)}
                 disabled={comprehensiveScanMutation.isPending || isScanning}
                 className="w-full flex items-center justify-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50"
               >

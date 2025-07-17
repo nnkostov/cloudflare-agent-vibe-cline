@@ -498,13 +498,13 @@ export class RepoAnalyzer extends BaseService {
       return CONFIG.claude.models.low; // claude-3-haiku-20240307
     }
     
-    // Fallback
+    // Fallback to Claude 4 models
     if (score.total >= ScoringConfig.thresholds.veryHigh || score.growth >= 90) {
-      return 'claude-opus-4';
+      return 'claude-opus-4-20250514';
     } else if (score.total >= ScoringConfig.thresholds.highPotential) {
-      return 'claude-sonnet-4';
+      return 'claude-sonnet-4-20250514';
     }
-    return 'claude-3-haiku-20240307';
+    return 'claude-3-5-haiku-20241022';
   }
 
   /**

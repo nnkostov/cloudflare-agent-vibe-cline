@@ -156,12 +156,17 @@ export default function Leaderboard() {
                     </div>
 
                     <div className="flex flex-col space-y-2 ml-4">
-                      <Link
-                        to={`/analysis/${repo.owner}/${repo.name}`}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
-                      >
-                        View Analysis
-                      </Link>
+                      {(() => {
+                        const [owner, name] = repo.full_name.split('/');
+                        return (
+                          <Link
+                            to={`/analysis/${owner}/${name}`}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            View Analysis
+                          </Link>
+                        );
+                      })()}
                       <a
                         href={`https://github.com/${repo.full_name}`}
                         target="_blank"

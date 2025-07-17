@@ -5,6 +5,18 @@ import { StorageService } from '../services/storage-unified';
 import { RepoAnalyzer } from '../analyzers/repoAnalyzer-unified';
 import { CONFIG as Config } from '../types';
 
+interface ScanProgress {
+  phase: string;
+  startTime: number;
+  endTime?: number;
+  repoCount: number;
+  tier1: { found: number; processed: number; analyzed: number };
+  tier2: { found: number; processed: number; analyzed: number };
+  tier3: { found: number; processed: number };
+  errors: Array<{ phase: string; error: string; stack?: string }>;
+  logs: string[];
+}
+
 export class GitHubAgent {
   private state: DurableObjectState;
   private env: Env;
@@ -12,6 +24,7 @@ export class GitHubAgent {
   private claude: ClaudeService;
   private storage: StorageService;
   private analyzer: RepoAnalyzer;
+  private scanProgress: ScanProgress | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -20,6 +33,26 @@ export class GitHubAgent {
     this.claude = new ClaudeService(env);
     this.storage = new StorageService(env);
     this.analyzer = new RepoAnalyzer(env);
+  }
+
+  private log(message: string, data?: any) {
+    const logMessage = `[GitHubAgent] ${new Date().toISOString()} - ${message}`;
+    console.log(logMessage, data || '');
+    
+    if (this.scanProgress) {
+      this.scanProgress.logs.push(logMessage + (data ? ` - ${JSON.stringify(data)}` : ''));
+    }
+  }
+
+  private logError(phase: string, error: any) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    
+    console.error(`[GitHubAgent ERROR] ${phase}:`, errorMessage, stack);
+    
+    if (this.scanProgress) {
+      this.scanProgress.errors.push({ phase, error: errorMessage, stack });
+    }
   }
 
   /**
@@ -185,7 +218,7 @@ export class GitHubAgent {
     topics: string[] = Config.github.topics,
     minStars: number = Config.github.minStars
   ): Promise<Repository[]> {
-    console.log(`Scanning GitHub for topics: ${topics.join(', ')}`);
+    this.log(`Scanning GitHub for topics: ${topics.join(', ')}`);
     
     const repos = await this.github.searchTrendingRepos(topics, minStars);
     
@@ -217,7 +250,7 @@ export class GitHubAgent {
       });
     }
     
-    console.log(`Found ${repos.length} repositories and assigned tiers`);
+    this.log(`Found ${repos.length} repositories and assigned tiers`);
     return repos;
   }
 
@@ -226,19 +259,19 @@ export class GitHubAgent {
    */
   private async analyzeHighPotentialRepos(repos?: Repository[]): Promise<void> {
     const highGrowthRepos = repos || await this.storage.getHighGrowthRepos(30, 200);
-    console.log(`Analyzing ${highGrowthRepos.length} repositories`);
+    this.log(`Analyzing ${highGrowthRepos.length} repositories`);
     
     for (const repo of highGrowthRepos.slice(0, 10)) {
       try {
         if (await this.storage.hasRecentAnalysis(repo.id)) {
-          console.log(`Skipping ${repo.full_name} - recent analysis exists`);
+          this.log(`Skipping ${repo.full_name} - recent analysis exists`);
           continue;
         }
         
         await this.analyzeRepository(repo, true); // Force analysis
         await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit
       } catch (error) {
-        console.error(`Error analyzing ${repo.full_name}:`, error);
+        this.logError(`Error analyzing ${repo.full_name}`, error);
       }
     }
   }
@@ -247,15 +280,15 @@ export class GitHubAgent {
    * Analyze a single repository
    */
   private async analyzeRepository(repo: Repository, force: boolean = false) {
-    console.log(`Analyzing repository: ${repo.full_name}`);
+    this.log(`Analyzing repository: ${repo.full_name}`);
     
     // Get initial score
     const score = await this.analyzer.analyze(repo);
-    console.log(`Score for ${repo.full_name}: ${score.total}`);
+    this.log(`Score for ${repo.full_name}: ${score.total}`);
     
     // For forced analysis or Tier 1 repos, always analyze
     if (!force && !this.analyzer.isHighPotential(score)) {
-      console.log(`${repo.full_name} does not meet threshold for deep analysis`);
+      this.log(`${repo.full_name} does not meet threshold for deep analysis`);
       return null;
     }
     
@@ -263,7 +296,7 @@ export class GitHubAgent {
     const readme = await this.github.getReadmeContent(repo.owner, repo.name);
     const model = this.analyzer.getRecommendedModel(score);
     
-    console.log(`Using model ${model} for ${repo.full_name} (score: ${score.total}, growth: ${score.growth})`);
+    this.log(`Using model ${model} for ${repo.full_name} (score: ${score.total}, growth: ${score.growth})`);
     
     const analysis = await this.claude.analyzeRepository(repo, readme, model);
     
@@ -294,7 +327,7 @@ export class GitHubAgent {
         const contributors = await this.github.getContributors(repo.owner, repo.name);
         await this.storage.saveContributors(repo.id, contributors);
       } catch (error) {
-        console.error(`Error getting contributors for ${repo.full_name}:`, error);
+        this.logError(`Error getting contributors for ${repo.full_name}`, error);
       }
     }
     
@@ -305,12 +338,27 @@ export class GitHubAgent {
    * Handle comprehensive scan request
    */
   private async handleComprehensiveScan(): Promise<Response> {
-    console.log('Starting manual comprehensive scan...');
+    this.log('Starting manual comprehensive scan...');
+    
+    // Initialize scan progress
+    this.scanProgress = {
+      phase: 'initialization',
+      startTime: Date.now(),
+      repoCount: 0,
+      tier1: { found: 0, processed: 0, analyzed: 0 },
+      tier2: { found: 0, processed: 0, analyzed: 0 },
+      tier3: { found: 0, processed: 0 },
+      errors: [],
+      logs: []
+    };
     
     try {
-      const startTime = Date.now();
       const result = await this.comprehensiveScan();
-      const duration = Date.now() - startTime;
+      
+      this.scanProgress.endTime = Date.now();
+      const duration = this.scanProgress.endTime - this.scanProgress.startTime;
+      
+      this.log(`Comprehensive scan completed in ${Math.round(duration / 1000)}s`, result);
       
       return this.jsonResponse({ 
         message: 'Comprehensive scan completed',
@@ -318,6 +366,7 @@ export class GitHubAgent {
         discovered: result.discovered,
         processed: result.processed,
         analyzed: result.analyzed,
+        progress: this.scanProgress,
         tiers: {
           tier1: await this.storage.getReposByTier(1, 10),
           tier2: await this.storage.getReposByTier(2, 10),
@@ -325,9 +374,15 @@ export class GitHubAgent {
         }
       });
     } catch (error) {
-      console.error('Error in comprehensive scan:', error);
+      this.logError('Comprehensive scan failed', error);
+      
+      if (this.scanProgress) {
+        this.scanProgress.endTime = Date.now();
+      }
+      
       return this.jsonResponse({ 
-        error: error instanceof Error ? error.message : 'Scan failed' 
+        error: error instanceof Error ? error.message : 'Scan failed',
+        progress: this.scanProgress
       }, 500);
     }
   }
@@ -372,7 +427,11 @@ export class GitHubAgent {
    * Comprehensive repository scanning with tiered approach
    */
   private async comprehensiveScan(): Promise<{ processed: number, analyzed: number, discovered: number }> {
-    console.log('Starting comprehensive repository scan...');
+    this.log('Starting comprehensive repository scan...');
+    
+    if (this.scanProgress) {
+      this.scanProgress.phase = 'starting';
+    }
     
     const startTime = Date.now();
     const MAX_RUNTIME = 45000; // 45 seconds max runtime
@@ -380,234 +439,318 @@ export class GitHubAgent {
     let analyzed = 0;
     let discovered = 0;
     
-    // First check if we have any repos in the database
-    const repoCount = await this.storage.getRepositoryCount();
-    console.log(`Found ${repoCount} repositories in database`);
-    
-    // If no repos, run discovery first
-    if (repoCount < 100) {
-      console.log('Running discovery phase to find repositories...');
-      const repos = await this.scanGitHub();
-      discovered = repos.length;
-      console.log(`Discovered ${discovered} new repositories`);
+    try {
+      // First check if we have any repos in the database
+      const repoCount = await this.storage.getRepositoryCount();
+      this.log(`Found ${repoCount} repositories in database`);
+      
+      if (this.scanProgress) {
+        this.scanProgress.repoCount = repoCount;
+      }
+      
+      // If no repos, run discovery first
+      if (repoCount < 100) {
+        this.log('Running discovery phase to find repositories...');
+        if (this.scanProgress) {
+          this.scanProgress.phase = 'discovery';
+        }
+        
+        const repos = await this.scanGitHub();
+        discovered = repos.length;
+        this.log(`Discovered ${discovered} new repositories`);
+      }
+      
+      // Process each tier with time limits
+      if (this.scanProgress) {
+        this.scanProgress.phase = 'tier1';
+      }
+      const tier1Result = await this.processTier1Repos(MAX_RUNTIME - (Date.now() - startTime));
+      processed += tier1Result.processed;
+      analyzed += tier1Result.analyzed;
+      
+      if (Date.now() - startTime < MAX_RUNTIME) {
+        if (this.scanProgress) {
+          this.scanProgress.phase = 'tier2';
+        }
+        const tier2Result = await this.processTier2Repos(MAX_RUNTIME - (Date.now() - startTime));
+        processed += tier2Result.processed;
+        analyzed += tier2Result.analyzed;
+      }
+      
+      if (Date.now() - startTime < MAX_RUNTIME) {
+        if (this.scanProgress) {
+          this.scanProgress.phase = 'tier3';
+        }
+        const tier3Result = await this.processTier3Repos(MAX_RUNTIME - (Date.now() - startTime));
+        processed += tier3Result.processed;
+      }
+      
+      this.log(`Comprehensive scan completed. Discovered: ${discovered}, Processed: ${processed}, Analyzed: ${analyzed}`);
+      return { processed, analyzed, discovered };
+    } catch (error) {
+      this.logError('Comprehensive scan error', error);
+      throw error;
     }
-    
-    // Process each tier with time limits
-    const tier1Result = await this.processTier1Repos(MAX_RUNTIME - (Date.now() - startTime));
-    processed += tier1Result.processed;
-    analyzed += tier1Result.analyzed;
-    
-    if (Date.now() - startTime < MAX_RUNTIME) {
-      const tier2Result = await this.processTier2Repos(MAX_RUNTIME - (Date.now() - startTime));
-      processed += tier2Result.processed;
-      analyzed += tier2Result.analyzed;
-    }
-    
-    if (Date.now() - startTime < MAX_RUNTIME) {
-      const tier3Result = await this.processTier3Repos(MAX_RUNTIME - (Date.now() - startTime));
-      processed += tier3Result.processed;
-    }
-    
-    console.log(`Comprehensive scan completed. Discovered: ${discovered}, Processed: ${processed}, Analyzed: ${analyzed}`);
-    return { processed, analyzed, discovered };
   }
 
   /**
    * Process Tier 1 repositories (deep scan)
    */
   private async processTier1Repos(maxRuntime: number): Promise<{ processed: number, analyzed: number }> {
-    console.log('Processing Tier 1 repositories...');
+    this.log('Processing Tier 1 repositories...');
     const startTime = Date.now();
-    const tier1Repos = await this.storage.getReposNeedingScan(1, 'deep');
-    console.log(`Found ${tier1Repos.length} Tier 1 repos needing scan`);
     
-    let processed = 0;
-    let analyzed = 0;
-    const MAX_BATCH = 10; // Process max 10 repos per run
-    
-    for (const repoId of tier1Repos.slice(0, MAX_BATCH)) {
-      if (Date.now() - startTime > maxRuntime) {
-        console.log('Tier 1 processing time limit reached');
-        break;
+    try {
+      const tier1Repos = await this.storage.getReposNeedingScan(1, 'deep');
+      this.log(`Found ${tier1Repos.length} Tier 1 repos needing scan`);
+      
+      if (this.scanProgress) {
+        this.scanProgress.tier1.found = tier1Repos.length;
       }
       
-      const repo = await this.storage.getRepository(repoId);
-      if (!repo) continue;
+      let processed = 0;
+      let analyzed = 0;
+      const MAX_BATCH = 10; // Process max 10 repos per run
       
-      try {
-        // Collect all enhanced metrics
-        const [commits, releases, prs, issues, stars, forks] = await Promise.all([
-          this.github.getCommitActivity(repo.owner, repo.name),
-          this.github.getReleaseMetrics(repo.owner, repo.name),
-          this.github.getPullRequestMetrics(repo.owner, repo.name),
-          this.github.getIssueMetrics(repo.owner, repo.name),
-          this.github.getStarHistory(repo.owner, repo.name),
-          this.github.analyzeForkNetwork(repo.owner, repo.name),
-        ]);
-        
-        // Save metrics with repo_id
-        await this.saveMetricsWithRepoId(repoId, { commits, releases, prs, issues, stars, forks });
-        
-        // Analyze with enhanced metrics (without releases)
-        const score = await this.analyzer.analyze(repo, {
-          commits, pullRequests: prs, issues, stars, forks
-        });
-        
-        // Update tier based on new score
-        await this.storage.updateRepoTier(repoId, {
-          stars: repo.stars,
-          growth_velocity: score.factors?.growth_velocity || 0,
-          engagement_score: score.engagement,
-        });
-        
-        // Mark as scanned
-        await this.storage.markRepoScanned(repoId, 'deep');
-        
-        // ALWAYS analyze Tier 1 repos with Claude AI
-        console.log(`Running Claude AI analysis for Tier 1 repo: ${repo.full_name}`);
-        const analysis = await this.analyzeRepository(repo, true); // Force analysis
-        if (analysis) {
-          analyzed++;
+      for (const repoId of tier1Repos.slice(0, MAX_BATCH)) {
+        if (Date.now() - startTime > maxRuntime) {
+          this.log('Tier 1 processing time limit reached');
+          break;
         }
         
-        processed++;
-        
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.error(`Error processing tier 1 repo ${repo.full_name}:`, error);
+        try {
+          const repo = await this.storage.getRepository(repoId);
+          if (!repo) {
+            this.log(`Repository ${repoId} not found in database`);
+            continue;
+          }
+          
+          this.log(`Processing Tier 1 repo: ${repo.full_name}`);
+          
+          // Collect all enhanced metrics
+          const [commits, releases, prs, issues, stars, forks] = await Promise.all([
+            this.github.getCommitActivity(repo.owner, repo.name),
+            this.github.getReleaseMetrics(repo.owner, repo.name),
+            this.github.getPullRequestMetrics(repo.owner, repo.name),
+            this.github.getIssueMetrics(repo.owner, repo.name),
+            this.github.getStarHistory(repo.owner, repo.name),
+            this.github.analyzeForkNetwork(repo.owner, repo.name),
+          ]);
+          
+          // Save metrics with repo_id
+          await this.saveMetricsWithRepoId(repoId, { commits, releases, prs, issues, stars, forks });
+          
+          // Analyze with enhanced metrics (without releases)
+          const score = await this.analyzer.analyze(repo, {
+            commits, pullRequests: prs, issues, stars, forks
+          });
+          
+          // Update tier based on new score
+          await this.storage.updateRepoTier(repoId, {
+            stars: repo.stars,
+            growth_velocity: score.factors?.growth_velocity || 0,
+            engagement_score: score.engagement,
+          });
+          
+          // Mark as scanned
+          await this.storage.markRepoScanned(repoId, 'deep');
+          
+          // ALWAYS analyze Tier 1 repos with Claude AI
+          this.log(`Running Claude AI analysis for Tier 1 repo: ${repo.full_name}`);
+          const analysis = await this.analyzeRepository(repo, true); // Force analysis
+          if (analysis) {
+            analyzed++;
+            this.log(`Successfully analyzed ${repo.full_name} with Claude AI`);
+          }
+          
+          processed++;
+          
+          if (this.scanProgress) {
+            this.scanProgress.tier1.processed = processed;
+            this.scanProgress.tier1.analyzed = analyzed;
+          }
+          
+          // Rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          this.logError(`Error processing tier 1 repo ${repoId}`, error);
+        }
       }
+      
+      return { processed, analyzed };
+    } catch (error) {
+      this.logError('Error in processTier1Repos', error);
+      return { processed: 0, analyzed: 0 };
     }
-    
-    return { processed, analyzed };
   }
 
   /**
    * Process Tier 2 repositories (basic scan)
    */
   private async processTier2Repos(maxRuntime: number): Promise<{ processed: number, analyzed: number }> {
-    console.log('Processing Tier 2 repositories...');
+    this.log('Processing Tier 2 repositories...');
     const startTime = Date.now();
-    const tier2Repos = await this.storage.getReposNeedingScan(2, 'basic');
-    console.log(`Found ${tier2Repos.length} Tier 2 repos needing scan`);
     
-    let processed = 0;
-    let analyzed = 0;
-    const MAX_BATCH = 20; // Process max 20 repos per run
-    const ANALYZE_TOP = 5; // Analyze top 5 Tier 2 repos
-    
-    for (let i = 0; i < tier2Repos.length && i < MAX_BATCH; i++) {
-      if (Date.now() - startTime > maxRuntime) {
-        console.log('Tier 2 processing time limit reached');
-        break;
+    try {
+      const tier2Repos = await this.storage.getReposNeedingScan(2, 'basic');
+      this.log(`Found ${tier2Repos.length} Tier 2 repos needing scan`);
+      
+      if (this.scanProgress) {
+        this.scanProgress.tier2.found = tier2Repos.length;
       }
       
-      const repoId = tier2Repos[i];
-      const repo = await this.storage.getRepository(repoId);
-      if (!repo) continue;
+      let processed = 0;
+      let analyzed = 0;
+      const MAX_BATCH = 20; // Process max 20 repos per run
+      const ANALYZE_TOP = 5; // Analyze top 5 Tier 2 repos
       
-      try {
-        // Collect basic metrics only
-        const [stars, issues] = await Promise.all([
-          this.github.getStarHistory(repo.owner, repo.name, 7),
-          this.github.getIssueMetrics(repo.owner, repo.name, 7),
-        ]);
-        
-        // Save basic metrics
-        await this.storage.saveStarHistory(
-          stars.map(s => ({ ...s, repo_id: repoId }))
-        );
-        if (issues) {
-          await this.storage.saveIssueMetrics({ ...issues, repo_id: repoId });
+      for (let i = 0; i < tier2Repos.length && i < MAX_BATCH; i++) {
+        if (Date.now() - startTime > maxRuntime) {
+          this.log('Tier 2 processing time limit reached');
+          break;
         }
         
-        // Basic analysis
-        const score = await this.analyzer.analyze(repo, { stars, issues });
+        const repoId = tier2Repos[i];
         
-        // Check for promotion to Tier 1
-        if (score.growth > 70 || repo.stars >= 100) {
-          await this.storage.updateRepoTier(repoId, {
-            stars: repo.stars,
-            growth_velocity: score.factors?.growth_velocity || 0,
-            engagement_score: score.engagement,
-          });
-        }
-        
-        // Analyze top Tier 2 repos with Claude AI
-        if (i < ANALYZE_TOP && !await this.storage.hasRecentAnalysis(repo.id)) {
-          console.log(`Running Claude AI analysis for top Tier 2 repo: ${repo.full_name}`);
-          const analysis = await this.analyzeRepository(repo, true); // Force analysis
-          if (analysis) {
-            analyzed++;
+        try {
+          const repo = await this.storage.getRepository(repoId);
+          if (!repo) {
+            this.log(`Repository ${repoId} not found in database`);
+            continue;
           }
+          
+          this.log(`Processing Tier 2 repo: ${repo.full_name}`);
+          
+          // Collect basic metrics only
+          const [stars, issues] = await Promise.all([
+            this.github.getStarHistory(repo.owner, repo.name, 7),
+            this.github.getIssueMetrics(repo.owner, repo.name, 7),
+          ]);
+          
+          // Save basic metrics
+          await this.storage.saveStarHistory(
+            stars.map(s => ({ ...s, repo_id: repoId }))
+          );
+          if (issues) {
+            await this.storage.saveIssueMetrics({ ...issues, repo_id: repoId });
+          }
+          
+          // Basic analysis
+          const score = await this.analyzer.analyze(repo, { stars, issues });
+          
+          // Check for promotion to Tier 1
+          if (score.growth > 70 || repo.stars >= 100) {
+            await this.storage.updateRepoTier(repoId, {
+              stars: repo.stars,
+              growth_velocity: score.factors?.growth_velocity || 0,
+              engagement_score: score.engagement,
+            });
+          }
+          
+          // Analyze top Tier 2 repos with Claude AI
+          if (i < ANALYZE_TOP && !await this.storage.hasRecentAnalysis(repo.id)) {
+            this.log(`Running Claude AI analysis for top Tier 2 repo: ${repo.full_name}`);
+            const analysis = await this.analyzeRepository(repo, true); // Force analysis
+            if (analysis) {
+              analyzed++;
+              this.log(`Successfully analyzed ${repo.full_name} with Claude AI`);
+            }
+          }
+          
+          await this.storage.markRepoScanned(repoId, 'basic');
+          processed++;
+          
+          if (this.scanProgress) {
+            this.scanProgress.tier2.processed = processed;
+            this.scanProgress.tier2.analyzed = analyzed;
+          }
+          
+          // Lighter rate limiting
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (error) {
+          this.logError(`Error processing tier 2 repo ${repoId}`, error);
         }
-        
-        await this.storage.markRepoScanned(repoId, 'basic');
-        processed++;
-        
-        // Lighter rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200));
-      } catch (error) {
-        console.error(`Error processing tier 2 repo ${repo.full_name}:`, error);
       }
+      
+      return { processed, analyzed };
+    } catch (error) {
+      this.logError('Error in processTier2Repos', error);
+      return { processed: 0, analyzed: 0 };
     }
-    
-    return { processed, analyzed };
   }
 
   /**
    * Process Tier 3 repositories (minimal scan)
    */
   private async processTier3Repos(maxRuntime: number): Promise<{ processed: number }> {
-    console.log('Processing Tier 3 repositories...');
+    this.log('Processing Tier 3 repositories...');
     const startTime = Date.now();
-    const tier3Repos = await this.storage.getReposNeedingScan(3, 'basic');
-    console.log(`Found ${tier3Repos.length} Tier 3 repos needing scan`);
     
-    let processed = 0;
-    const MAX_BATCH = 30; // Process max 30 repos per run
-    
-    // Batch process for efficiency
-    const batch = tier3Repos.slice(0, MAX_BATCH);
-    
-    await Promise.all(batch.map(async (repoId) => {
-      if (Date.now() - startTime > maxRuntime) {
-        return;
+    try {
+      const tier3Repos = await this.storage.getReposNeedingScan(3, 'basic');
+      this.log(`Found ${tier3Repos.length} Tier 3 repos needing scan`);
+      
+      if (this.scanProgress) {
+        this.scanProgress.tier3.found = tier3Repos.length;
       }
       
-      const repo = await this.storage.getRepository(repoId);
-      if (!repo) return;
+      let processed = 0;
+      const MAX_BATCH = 30; // Process max 30 repos per run
       
-      try {
-        // Just update basic metrics
-        await this.storage.saveMetrics({
-          repo_id: repoId,
-          stars: repo.stars,
-          forks: repo.forks,
-          open_issues: repo.open_issues,
-          watchers: repo.stars,
-          contributors: Math.ceil(repo.forks * 0.1),
-          commits_count: 0,
-          recorded_at: new Date().toISOString(),
-        });
-        
-        // Check for promotion
-        if (repo.stars >= 50) {
-          await this.storage.updateRepoTier(repoId, {
-            stars: repo.stars,
-            growth_velocity: 0,
-            engagement_score: 30,
-          });
+      // Batch process for efficiency
+      const batch = tier3Repos.slice(0, MAX_BATCH);
+      
+      await Promise.all(batch.map(async (repoId) => {
+        if (Date.now() - startTime > maxRuntime) {
+          return;
         }
         
-        await this.storage.markRepoScanned(repoId, 'basic');
-        processed++;
-      } catch (error) {
-        console.error(`Error processing tier 3 repo ${repo.full_name}:`, error);
-      }
-    }));
-    
-    return { processed };
+        try {
+          const repo = await this.storage.getRepository(repoId);
+          if (!repo) {
+            this.log(`Repository ${repoId} not found in database`);
+            return;
+          }
+          
+          this.log(`Processing Tier 3 repo: ${repo.full_name}`);
+          
+          // Just update basic metrics
+          await this.storage.saveMetrics({
+            repo_id: repoId,
+            stars: repo.stars,
+            forks: repo.forks,
+            open_issues: repo.open_issues,
+            watchers: repo.stars,
+            contributors: Math.ceil(repo.forks * 0.1),
+            commits_count: 0,
+            recorded_at: new Date().toISOString(),
+          });
+          
+          // Check for promotion
+          if (repo.stars >= 50) {
+            await this.storage.updateRepoTier(repoId, {
+              stars: repo.stars,
+              growth_velocity: 0,
+              engagement_score: 30,
+            });
+          }
+          
+          await this.storage.markRepoScanned(repoId, 'basic');
+          processed++;
+          
+          if (this.scanProgress) {
+            this.scanProgress.tier3.processed = processed;
+          }
+        } catch (error) {
+          this.logError(`Error processing tier 3 repo ${repoId}`, error);
+        }
+      }));
+      
+      return { processed };
+    } catch (error) {
+      this.logError('Error in processTier3Repos', error);
+      return { processed: 0 };
+    }
   }
 
   /**

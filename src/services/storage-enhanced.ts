@@ -412,8 +412,20 @@ export class StorageEnhancedService extends BaseService {
   /**
    * Get repositories needing scan by tier
    */
-  async getReposNeedingScan(tier: 1 | 2 | 3, scanType: 'deep' | 'basic'): Promise<string[]> {
+  async getReposNeedingScan(tier: 1 | 2 | 3, scanType: 'deep' | 'basic', force: boolean = false): Promise<string[]> {
     try {
+      if (force) {
+        // When forced, return all repos of this tier
+        const result = await this.env.DB.prepare(`
+          SELECT repo_id FROM repo_tiers 
+          WHERE tier = ?
+          ORDER BY scan_priority DESC, stars DESC
+          LIMIT 100
+        `).bind(tier).all();
+
+        return result.results.map((r: any) => r.repo_id);
+      }
+
       const hoursMap = {
         1: { deep: 6, basic: 3 },
         2: { deep: 24, basic: 12 },

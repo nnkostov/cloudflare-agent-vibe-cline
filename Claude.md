@@ -97,11 +97,14 @@ Alarm triggers → Scan GitHub → Analyze top repos → Set next alarm
 - **Quality**: Documentation, activity, language
 
 ### Claude Model Selection
-- **Score ≥ 70**: Claude-Opus-4 (deep analysis)
-- **Score 50-69**: Claude-Sonnet-4 (standard analysis)
-- **Score < 50**: Claude-3-Haiku (quick scan)
+- **Score ≥ 70**: Claude-Opus-4 (deep analysis) - `claude-opus-4-20250514`
+- **Score 50-69**: Claude-Sonnet-4 (standard analysis) - `claude-sonnet-4-20250514`
+- **Score < 50**: Claude-3.5-Haiku (quick scan) - `claude-3-5-haiku-20241022`
 
-**IMPORTANT**: Always use Claude 4 models (`claude-opus-4`, `claude-sonnet-4`) for analysis, NOT the Claude 3.5 versions. The system has been updated to use these newer models exclusively.
+**IMPORTANT**: The system now uses the official Claude 4 model names:
+- `claude-opus-4-20250514` (NOT `claude-opus-4`)
+- `claude-sonnet-4-20250514` (NOT `claude-sonnet-4`)
+- These are the latest and most capable Claude models available.
 
 ### Analysis Output
 - Investment score (0-100)

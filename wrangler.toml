@@ -42,3 +42,11 @@ vars = { ENVIRONMENT = "development" }
 # Cron triggers for automated scanning
 [triggers]
 crons = ["0 * * * *"]  # Every hour for comprehensive scan
+
+# Observability configuration
+[observability.logs]
+enabled = true
+
+# Tail consumers configuration
+[[tail_consumers]]
+service = "github-ai-intelligence-tail"

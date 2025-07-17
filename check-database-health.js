@@ -10,7 +10,7 @@
  * - Schema validation
  */
 
-const API_BASE_URL = process.env.API_URL || 'https://github-ai-agent.nnkostov.workers.dev';
+const API_BASE_URL = process.env.API_URL || 'https://github-ai-intelligence.pages.dev';
 
 // ANSI color codes for terminal output
 const colors = {

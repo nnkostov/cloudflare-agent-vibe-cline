@@ -161,8 +161,9 @@ class ApiClient {
     });
   }
 
-  triggerComprehensiveScan = async () => {
-    return this.request<any>('/scan/comprehensive', {
+  triggerComprehensiveScan = async (force: boolean = false) => {
+    const url = force ? '/scan/comprehensive?force=true' : '/scan/comprehensive';
+    return this.request<any>(url, {
       method: 'POST',
       body: JSON.stringify({}),
     });
