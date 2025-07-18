@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play, RefreshCw, Settings, Zap, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 
@@ -223,6 +223,50 @@ export default function Controls() {
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               The agent automatically scans repositories every {status?.scanInterval || 1} hour{status?.scanInterval !== 1 ? 's' : ''} when initialized.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Analysis Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Analysis Controls</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Batch Analysis</h4>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Generate AI analysis for all visible repositories that don't have one yet
+            </p>
+            <button
+              onClick={() => {
+                fetch('/api/analyze/batch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ target: 'visible' })
+                })
+                .then(res => res.json())
+                .then(data => {
+                  setStatusMessage({
+                    type: 'success',
+                    message: `Batch analysis started! Queued ${data.queued} repositories for analysis.`
+                  });
+                })
+                .catch(error => {
+                  setStatusMessage({
+                    type: 'error',
+                    message: `Failed to start batch analysis: ${error.message}`
+                  });
+                });
+              }}
+              className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Analyze All Visible Repos
+            </button>
+            <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+              This will analyze up to 10 repositories at a time to avoid rate limits
             </p>
           </div>
         </CardContent>

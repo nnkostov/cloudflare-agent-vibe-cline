@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { TrendingUp, Star, GitFork, ExternalLink } from 'lucide-react';
+import { TrendingUp, Star, GitFork, ExternalLink, FileText, Sparkles } from 'lucide-react';
 import { api, formatNumber, getRecommendationBadge } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { getTierBadge, getLanguageColor, truncateText } from '@/lib/utils';
@@ -158,12 +158,28 @@ export default function Leaderboard() {
                     <div className="flex flex-col space-y-2 ml-4">
                       {(() => {
                         const [owner, name] = repo.full_name.split('/');
+                        const hasAnalysis = !!analysis;
+                        
                         return (
                           <Link
                             to={`/analysis/${owner}/${name}`}
-                            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                            className={`flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                              hasAnalysis
+                                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                : 'bg-gray-600 text-white hover:bg-gray-700'
+                            }`}
                           >
-                            View Analysis
+                            {hasAnalysis ? (
+                              <>
+                                <FileText className="h-4 w-4 mr-1" />
+                                View Analysis
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="h-4 w-4 mr-1" />
+                                Generate Analysis
+                              </>
+                            )}
                           </Link>
                         );
                       })()}

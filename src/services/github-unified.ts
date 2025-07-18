@@ -49,19 +49,43 @@ export class GitHubService extends BaseService {
         
         console.log('GitHub search query:', query);
 
-        const response = await this.octokit.search.repos({
-          q: query,
-          sort: 'stars',
-          order: 'desc',
-          per_page: limit,
-        });
+        const allRepos: Repository[] = [];
+        const perPage = Math.min(limit, 100); // GitHub API max is 100 per page
+        const totalPages = Math.ceil(limit / perPage);
 
-        console.log('GitHub search response:', {
-          total_count: response.data.total_count,
-          items_returned: response.data.items.length
-        });
+        // Fetch multiple pages if needed
+        for (let page = 1; page <= totalPages && allRepos.length < limit; page++) {
+          const response = await this.octokit.search.repos({
+            q: query,
+            sort: 'stars',
+            order: 'desc',
+            per_page: perPage,
+            page: page,
+          });
 
-        return response.data.items.map(this.mapGitHubRepoToRepository);
+          console.log(`GitHub search response page ${page}:`, {
+            total_count: response.data.total_count,
+            items_returned: response.data.items.length,
+            page: page,
+            total_pages: totalPages
+          });
+
+          const repos = response.data.items.map(this.mapGitHubRepoToRepository);
+          allRepos.push(...repos);
+
+          // If we got fewer results than requested, we've reached the end
+          if (response.data.items.length < perPage) {
+            break;
+          }
+
+          // Add a small delay between requests to avoid rate limiting
+          if (page < totalPages && allRepos.length < limit) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        // Return only the requested number of repos
+        return allRepos.slice(0, limit);
       } catch (error) {
         console.error('Error searching GitHub repos:', error);
         throw new Error(`Failed to search GitHub repositories: ${error}`);
@@ -71,7 +95,8 @@ export class GitHubService extends BaseService {
 
   async searchRecentHighGrowthRepos(
     days: number = 30,
-    minStars: number = 50
+    minStars: number = 50,
+    limit: number = 100
   ): Promise<Repository[]> {
     if (!await githubSearchRateLimiter.checkLimit()) {
       const waitTime = githubSearchRateLimiter.getWaitTime();
@@ -86,14 +111,36 @@ export class GitHubService extends BaseService {
 
         const query = `created:>${dateString} stars:>=${minStars} sort:stars-desc`;
 
-        const response = await this.octokit.search.repos({
-          q: query,
-          sort: 'stars',
-          order: 'desc',
-          per_page: 100,
-        });
+        const allRepos: Repository[] = [];
+        const perPage = Math.min(limit, 100); // GitHub API max is 100 per page
+        const totalPages = Math.ceil(limit / perPage);
 
-        return response.data.items.map(this.mapGitHubRepoToRepository);
+        // Fetch multiple pages if needed
+        for (let page = 1; page <= totalPages && allRepos.length < limit; page++) {
+          const response = await this.octokit.search.repos({
+            q: query,
+            sort: 'stars',
+            order: 'desc',
+            per_page: perPage,
+            page: page,
+          });
+
+          const repos = response.data.items.map(this.mapGitHubRepoToRepository);
+          allRepos.push(...repos);
+
+          // If we got fewer results than requested, we've reached the end
+          if (response.data.items.length < perPage) {
+            break;
+          }
+
+          // Add a small delay between requests to avoid rate limiting
+          if (page < totalPages && allRepos.length < limit) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        // Return only the requested number of repos
+        return allRepos.slice(0, limit);
       } catch (error) {
         console.error('Error searching recent high-growth repos:', error);
         throw new Error(`Failed to search recent repositories: ${error}`);
@@ -106,6 +153,7 @@ export class GitHubService extends BaseService {
     limit: number = 100
   ): Promise<Repository[]> {
     const allRepos = new Map<string, Repository>();
+    const perStrategyLimit = Math.ceil(limit / strategies.length * 1.5); // Fetch extra to account for duplicates
     
     for (const strategy of strategies) {
       if (!await githubSearchRateLimiter.checkLimit()) {
@@ -117,16 +165,32 @@ export class GitHubService extends BaseService {
         try {
           console.log(`Searching with strategy: ${strategy.type} - ${strategy.query}`);
           
-          const { data } = await this.octokit.search.repos({
-            q: strategy.query,
-            sort: 'stars',
-            order: 'desc',
-            per_page: Math.min(limit, 100),
-          });
+          const perPage = Math.min(perStrategyLimit, 100);
+          const totalPages = Math.ceil(perStrategyLimit / perPage);
+          
+          for (let page = 1; page <= totalPages; page++) {
+            const { data } = await this.octokit.search.repos({
+              q: strategy.query,
+              sort: 'stars',
+              order: 'desc',
+              per_page: perPage,
+              page: page,
+            });
 
-          for (const repo of data.items) {
-            if (!allRepos.has(repo.id.toString())) {
-              allRepos.set(repo.id.toString(), this.mapGitHubRepoToRepository(repo));
+            for (const repo of data.items) {
+              if (!allRepos.has(repo.id.toString())) {
+                allRepos.set(repo.id.toString(), this.mapGitHubRepoToRepository(repo));
+              }
+            }
+            
+            // If we got fewer results than requested, we've reached the end
+            if (data.items.length < perPage) {
+              break;
+            }
+            
+            // Small delay between pages
+            if (page < totalPages) {
+              await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
         } catch (error) {

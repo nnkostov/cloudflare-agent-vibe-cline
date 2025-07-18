@@ -7,6 +7,13 @@ import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 // Re-export the Durable Object
 export { default as GitHubAgent } from './agents/GitHubAgent-fixed-comprehensive';
 
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const service = new WorkerService(env);
+    return service.handleRequest(request);
+  }
+};
+
 // @ts-ignore
 import manifestJSON from '__STATIC_CONTENT_MANIFEST';
 const assetManifest = JSON.parse(manifestJSON);
@@ -168,6 +175,7 @@ class WorkerService extends BaseService {
       '/logs/api-usage': () => this.handleAPIUsage(request),
       '/logs/scan-activity': () => this.handleScanActivity(request),
       '/logs/critical-alerts': () => this.handleCriticalAlerts(request),
+      '/analyze/batch': () => this.handleBatchAnalyze(request),
     };
 
     const handler = directHandlers[agentPath];
@@ -198,66 +206,60 @@ class WorkerService extends BaseService {
         const { StorageUnifiedService } = await import('./services/storage-unified');
         const storage = new StorageUnifiedService(this.env);
         
-        // Use the hybrid approach that works with or without historical data
-        const repos = await storage.getHighGrowthRepos(30, 200);
-        
-        // Log which approach was used
-        const hasHistoricalData = repos.some(r => r.growth_percent !== undefined);
-        console.log(`Trending repos: Using ${hasHistoricalData ? 'historical growth data' : 'hybrid trending algorithm'}`);
-        
-        // For large datasets, use streaming
-        if (repos.length > 50) {
-          const stream = StreamProcessor.createJSONStream();
-          const writer = stream.writable.getWriter();
+        try {
+          // Use the hybrid approach that works with or without historical data
+          const repos = await storage.getHighGrowthRepos(30, 200);
           
-          // Write opening
-          await writer.write(new TextEncoder().encode('{"repositories":['));
+          // Log which approach was used
+          const hasHistoricalData = repos.some(r => r.growth_percent !== undefined);
+          console.log(`Trending repos: Using ${hasHistoricalData ? 'historical growth data' : 'hybrid trending algorithm'}`);
           
-          // Stream repositories with analysis
-          for (let i = 0; i < Math.min(repos.length, 100); i++) {
-            const repo = repos[i];
-            const analysis = await storage.getLatestAnalysis(repo.id);
-            const repoData = { 
-              ...repo, 
-              latest_analysis: analysis,
-              trending_reason: repo.trending_factors ? 
-                this.getTrendingReason(repo.trending_factors) : 
-                'High growth rate'
-            };
-            
-            if (i > 0) await writer.write(new TextEncoder().encode(','));
-            await writer.write(new TextEncoder().encode(JSON.stringify(repoData)));
-          }
-          
-          // Write closing
-          await writer.write(new TextEncoder().encode(`],"total":${repos.length},"data_source":"${hasHistoricalData ? 'historical' : 'hybrid'}"}`));
-          await writer.close();
-          
-          return new Response(stream.readable, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Transfer-Encoding': 'chunked',
-              ...this.corsHeaders
-            }
-          });
-        }
-        
-        // For smaller datasets, use regular response
-        const reposWithAnalysis = await Promise.all(
-          repos.slice(0, 20).map(async (repo) => ({
-            ...repo,
-            latest_analysis: await storage.getLatestAnalysis(repo.id),
+          // For now, return a simplified response without analysis to avoid timeouts
+          const simplifiedRepos = repos.slice(0, 30).map(repo => ({
+            id: repo.id,
+            name: repo.name,
+            full_name: repo.full_name,
+            description: repo.description,
+            stars: repo.stars,
+            forks: repo.forks,
+            language: repo.language,
+            topics: repo.topics,
+            tier: repo.tier,
+            trending_score: repo.trending_score || repo.growth_percent || 0,
             trending_reason: repo.trending_factors ? 
               this.getTrendingReason(repo.trending_factors) : 
               'High growth rate'
-          }))
-        );
-        
-        return this.jsonResponse({
-          repositories: reposWithAnalysis,
-          total: repos.length,
-          data_source: hasHistoricalData ? 'historical' : 'hybrid'
-        });
+          }));
+          
+          return this.jsonResponse({
+            repositories: simplifiedRepos,
+            total: simplifiedRepos.length,
+            data_source: hasHistoricalData ? 'historical' : 'hybrid'
+          });
+        } catch (error) {
+          console.error('Error getting trending repos:', error);
+          
+          // Fallback: Return top starred repos as trending
+          const fallbackRepos = await storage.getReposByTier(1, 10);
+          
+          return this.jsonResponse({
+            repositories: fallbackRepos.map(repo => ({
+              id: repo.id,
+              name: repo.name,
+              full_name: repo.full_name,
+              description: repo.description,
+              stars: repo.stars,
+              forks: repo.forks,
+              language: repo.language,
+              topics: repo.topics,
+              tier: repo.tier,
+              trending_score: 0,
+              trending_reason: 'Top repository by stars'
+            })),
+            total: fallbackRepos.length,
+            data_source: 'fallback'
+          });
+        }
       }, 'get trending repos');
     });
   }
@@ -726,47 +728,97 @@ class WorkerService extends BaseService {
       });
     }, 'get critical alerts');
   }
-}
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const worker = new WorkerService(env);
-    try {
-      return await worker.handleRequest(request);
-    } catch (error) {
-      console.error('Worker error:', error);
-      // Include CORS headers in error responses
-      return new Response(
-        JSON.stringify({ 
-          error: error instanceof Error ? error.message : 'Internal server error' 
-        }),
-        { 
-          status: 500,
-          headers: { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          }
-        }
-      );
-    }
-  },
-  
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log('Scheduled event triggered:', event.cron);
-    
-    // Trigger comprehensive scan on schedule
-    try {
-      const id = env.GITHUB_AGENT.idFromName('main');
-      const agent = env.GITHUB_AGENT.get(id);
+  /**
+   * Handle batch analysis request for visible repositories
+   */
+  private async handleBatchAnalyze(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const body = await request.json() as any;
+      const { target = 'visible' } = body;
       
-      // Trigger the alarm to run comprehensive scan
-      await agent.fetch(new Request('http://internal/alarm', {
-        method: 'POST'
-      }));
-    } catch (error) {
-      console.error('Scheduled scan error:', error);
-    }
+      const { StorageUnifiedService } = await import('./services/storage-unified');
+      const storage = new StorageUnifiedService(this.env);
+      
+      console.log(`Starting batch analysis for ${target} repositories...`);
+      
+      // Get repositories that need analysis
+      let reposToAnalyze: any[] = [];
+      
+      if (target === 'visible' || target === 'all') {
+        // Get all visible repos (trending, leaderboard, tier 1 & 2)
+        const [trending, tier1, tier2] = await Promise.all([
+          storage.getHighGrowthRepos(30, 200),
+          storage.getReposByTier(1, 100),
+          storage.getReposByTier(2, 20),
+        ]);
+        
+        // Combine and deduplicate
+        const allRepos = [...trending, ...tier1, ...tier2];
+        const uniqueRepos = new Map();
+        allRepos.forEach(repo => uniqueRepos.set(repo.id, repo));
+        reposToAnalyze = Array.from(uniqueRepos.values());
+      } else if (target === 'tier1') {
+        reposToAnalyze = await storage.getReposByTier(1, 100);
+      } else if (target === 'tier2') {
+        reposToAnalyze = await storage.getReposByTier(2, 50);
+      }
+      
+      // Filter out repos that already have recent analysis
+      const reposNeedingAnalysis = [];
+      for (const repo of reposToAnalyze) {
+        const hasAnalysis = await storage.hasRecentAnalysis(repo.id);
+        if (!hasAnalysis) {
+          reposNeedingAnalysis.push(repo);
+        }
+      }
+      
+      console.log(`Found ${reposNeedingAnalysis.length} repositories needing analysis`);
+      
+      // Queue analysis for these repositories
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      // Start batch analysis in the background
+      const batchPromises = reposNeedingAnalysis.slice(0, 10).map(async (repo, index) => {
+        // Add delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, index * 5000));
+        
+        try {
+          const response = await agent.fetch(new Request('http://internal/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repoId: repo.id,
+              force: true
+            })
+          }));
+          
+          if (response.ok) {
+            return { repo: repo.full_name, status: 'success' };
+          } else {
+            return { repo: repo.full_name, status: 'failed', error: await response.text() };
+          }
+        } catch (error) {
+          return { repo: repo.full_name, status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+      });
+      
+      // Don't wait for all analyses to complete - just start them
+      Promise.all(batchPromises).then(results => {
+        console.log('Batch analysis completed:', results);
+      }).catch(error => {
+        console.error('Batch analysis error:', error);
+      });
+      
+      return this.jsonResponse({
+        message: 'Batch analysis started',
+        target,
+        totalRepos: reposToAnalyze.length,
+        needingAnalysis: reposNeedingAnalysis.length,
+        queued: Math.min(10, reposNeedingAnalysis.length),
+        repositories: reposNeedingAnalysis.slice(0, 10).map(r => r.full_name)
+      });
+    }, 'batch analyze repositories');
   }
-};
+}

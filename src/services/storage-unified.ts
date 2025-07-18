@@ -225,14 +225,14 @@ export class StorageUnifiedService extends BaseService {
             )
         )
         SELECT * FROM growth_calc WHERE growth_percent >= ? 
-        ORDER BY growth_percent DESC LIMIT 50`,
+        ORDER BY growth_percent DESC LIMIT 200`,
         days, minGrowthPercent
       );
 
       // If no growth repos found, use hybrid trending approach
       if (results.length === 0) {
         console.log('No historical growth data available, using hybrid trending approach');
-        return this.getHybridTrendingRepos();
+        return this.getHybridTrendingRepos(200);
       }
 
       return results.map(this.parseRepositoryWithTier);
@@ -245,104 +245,71 @@ export class StorageUnifiedService extends BaseService {
    */
   async getHybridTrendingRepos(limit: number = 50): Promise<any[]> {
     return this.performanceMonitor.monitor('getHybridTrendingRepos', async () => {
-      // Get all active repositories
+      // Get active repositories with calculated trending score in the query
       const repos = await this.dbAll<any>(`
         SELECT r.*, rt.tier,
           julianday('now') - julianday(r.pushed_at) as days_since_push,
           julianday('now') - julianday(r.updated_at) as days_since_update,
-          julianday(r.pushed_at) - julianday(r.created_at) as days_active
+          julianday(r.pushed_at) - julianday(r.created_at) as days_active,
+          -- Calculate trending score directly in SQL
+          (
+            -- Recent activity score (40%)
+            CASE 
+              WHEN julianday('now') - julianday(r.pushed_at) < 7 THEN 40
+              WHEN julianday('now') - julianday(r.pushed_at) < 30 THEN 30
+              WHEN julianday('now') - julianday(r.pushed_at) < 90 THEN 20
+              ELSE 10
+            END +
+            -- Star velocity estimate (30%)
+            CASE
+              WHEN r.stars > 10000 AND julianday(r.pushed_at) - julianday(r.created_at) < 365 THEN 30
+              WHEN r.stars > 5000 AND julianday(r.pushed_at) - julianday(r.created_at) < 365 THEN 25
+              WHEN r.stars > 1000 AND julianday(r.pushed_at) - julianday(r.created_at) < 180 THEN 20
+              WHEN r.stars > 500 AND julianday(r.pushed_at) - julianday(r.created_at) < 90 THEN 15
+              ELSE 10
+            END +
+            -- Fork ratio score (20%)
+            CASE
+              WHEN r.stars > 0 AND CAST(r.forks AS REAL) / r.stars > 0.3 THEN 20
+              WHEN r.stars > 0 AND CAST(r.forks AS REAL) / r.stars > 0.2 THEN 15
+              WHEN r.stars > 0 AND CAST(r.forks AS REAL) / r.stars > 0.1 THEN 10
+              ELSE 5
+            END +
+            -- Popularity bonus (10%)
+            CASE
+              WHEN r.stars > 50000 THEN 10
+              WHEN r.stars > 10000 THEN 8
+              WHEN r.stars > 5000 THEN 6
+              WHEN r.stars > 1000 THEN 4
+              ELSE 2
+            END
+          ) as trending_score
         FROM repositories r
         LEFT JOIN repo_tiers rt ON r.id = rt.repo_id
         WHERE r.is_archived = 0 AND r.is_fork = 0
-        ORDER BY r.stars DESC
-        LIMIT 200
-      `);
+          AND r.stars > 100  -- Only consider repos with at least 100 stars
+          AND julianday('now') - julianday(r.pushed_at) < 180  -- Active in last 6 months
+        ORDER BY trending_score DESC, r.stars DESC
+        LIMIT ?
+      `, limit);
 
-      // Calculate trending scores for each repo
-      const scoredRepos = await Promise.all(repos.map(async (repo) => {
-        const trendingScore = await this.calculateHybridTrendingScore(repo);
+      // Parse and return results with simplified trending factors
+      return repos.map(repo => {
+        const parsed = this.parseRepositoryWithTier(repo);
         return {
-          ...this.parseRepositoryWithTier(repo),
-          trending_score: trendingScore.total,
-          trending_factors: trendingScore.factors
+          ...parsed,
+          trending_score: repo.trending_score,
+          trending_factors: {
+            recentActivity: repo.days_since_push < 7 ? 100 : repo.days_since_push < 30 ? 75 : 50,
+            starVelocity: repo.stars / Math.max(1, repo.days_active || 365) * 365,
+            popularity: Math.min(100, Math.log10(repo.stars + 1) * 20),
+            forkActivity: repo.stars > 0 ? (repo.forks / repo.stars) * 100 : 0
+          }
         };
-      }));
-
-      // Sort by trending score and return top results
-      return scoredRepos
-        .sort((a, b) => b.trending_score - a.trending_score)
-        .slice(0, limit);
+      });
     });
   }
 
-  /**
-   * Calculate a hybrid trending score for a repository
-   */
-  private async calculateHybridTrendingScore(repo: any): Promise<{
-    total: number;
-    factors: Record<string, number>;
-  }> {
-    const factors: Record<string, number> = {};
-    
-    // 1. Recent activity score (0-100)
-    const daysSincePush = repo.days_since_push || 999;
-    const daysSinceUpdate = repo.days_since_update || 999;
-    factors.recentActivity = Math.max(0, 100 - (Math.min(daysSincePush, daysSinceUpdate) * 5));
-    
-    // 2. Star velocity score (0-100)
-    // Check if we have recent metrics
-    const recentMetrics = await this.dbAll<any>(`
-      SELECT stars, recorded_at
-      FROM repo_metrics
-      WHERE repo_id = ?
-      ORDER BY recorded_at DESC
-      LIMIT 10
-    `, repo.id);
-    
-    if (recentMetrics.length >= 2) {
-      // Calculate velocity from our metrics
-      const newest = recentMetrics[0];
-      const oldest = recentMetrics[recentMetrics.length - 1];
-      const daysDiff = (new Date(newest.recorded_at).getTime() - new Date(oldest.recorded_at).getTime()) / (1000 * 60 * 60 * 24);
-      const starGrowth = newest.stars - oldest.stars;
-      const dailyGrowth = daysDiff > 0 ? starGrowth / daysDiff : 0;
-      factors.starVelocity = Math.min(100, dailyGrowth * 10); // 10 stars/day = 100 score
-    } else {
-      // Estimate from repo age and current stars
-      const daysOld = repo.days_active || 365;
-      const avgDailyStars = repo.stars / Math.max(1, daysOld);
-      factors.starVelocity = Math.min(100, avgDailyStars * 20); // 5 stars/day = 100 score
-    }
-    
-    // 3. Size and popularity score (0-100)
-    // Normalize stars on a logarithmic scale
-    factors.popularity = Math.min(100, Math.log10(repo.stars + 1) * 20);
-    
-    // 4. Momentum score (0-100)
-    // Repos that are relatively new but growing fast
-    const ageInDays = repo.days_active || 365;
-    const momentumMultiplier = ageInDays < 90 ? 1.5 : ageInDays < 180 ? 1.2 : 1.0;
-    factors.momentum = factors.starVelocity * momentumMultiplier;
-    
-    // 5. Fork activity score (0-100)
-    const forkRatio = repo.stars > 0 ? (repo.forks / repo.stars) : 0;
-    factors.forkActivity = Math.min(100, forkRatio * 200); // 0.5 fork/star ratio = 100 score
-    
-    // Calculate weighted total score
-    const weights = {
-      starVelocity: 0.35,
-      recentActivity: 0.25,
-      momentum: 0.20,
-      popularity: 0.10,
-      forkActivity: 0.10
-    };
-    
-    const total = Object.entries(weights).reduce((sum, [key, weight]) => {
-      return sum + (factors[key] || 0) * weight;
-    }, 0);
-    
-    return { total, factors };
-  }
 
   /**
    * Get repositories by IDs in batch
@@ -491,7 +458,7 @@ export class StorageUnifiedService extends BaseService {
   private parseRepository(row: any): Repository {
     return {
       ...row,
-      topics: JSON.parse(row.topics || '[]'),
+      topics: Array.isArray(row.topics) ? row.topics : JSON.parse(row.topics || '[]'),
       is_archived: Boolean(row.is_archived),
       is_fork: Boolean(row.is_fork),
     };
@@ -500,7 +467,7 @@ export class StorageUnifiedService extends BaseService {
   private parseRepositoryWithTier(row: any): any {
     return {
       ...row,
-      topics: JSON.parse(row.topics || '[]'),
+      topics: Array.isArray(row.topics) ? row.topics : JSON.parse(row.topics || '[]'),
       is_archived: Boolean(row.is_archived),
       is_fork: Boolean(row.is_fork),
       tier: row.tier || null,

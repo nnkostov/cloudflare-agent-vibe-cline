@@ -1,20 +1,68 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, TrendingUp, Users, Lightbulb, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, TrendingUp, Users, Lightbulb, AlertTriangle, Loader2 } from 'lucide-react';
 import { api, getScoreColor, getRecommendationBadge } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { formatDate } from '@/lib/utils';
+import { useState, useEffect } from 'react';
 
 export default function Analysis() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationMessage, setGenerationMessage] = useState('');
 
   const { data: analysis, isLoading, error } = useQuery({
     queryKey: ['analysis', owner, repo],
-    queryFn: () => api.analyzeRepository(owner!, repo!),
+    queryFn: async () => {
+      try {
+        // First try to get existing analysis
+        const result = await api.analyzeRepository(owner!, repo!, false);
+        return result;
+      } catch (error: any) {
+        // If no analysis exists, trigger generation
+        if (error.message?.includes('not found') || error.message?.includes('Failed to generate')) {
+          setIsGenerating(true);
+          setGenerationMessage('No analysis found. Generating AI analysis...');
+          
+          try {
+            // Force analysis generation
+            const newAnalysis = await api.analyzeRepository(owner!, repo!, true);
+            setIsGenerating(false);
+            return newAnalysis;
+          } catch (genError) {
+            setIsGenerating(false);
+            throw genError;
+          }
+        }
+        throw error;
+      }
+    },
     enabled: !!owner && !!repo,
+    retry: 1,
   });
 
-  if (isLoading) {
+  // Update generation message based on loading time
+  useEffect(() => {
+    if (isGenerating) {
+      const messages = [
+        'Analyzing repository structure...',
+        'Evaluating code quality and architecture...',
+        'Assessing market potential...',
+        'Calculating investment scores...',
+        'Finalizing analysis...'
+      ];
+      
+      let messageIndex = 0;
+      const interval = setInterval(() => {
+        messageIndex = (messageIndex + 1) % messages.length;
+        setGenerationMessage(messages[messageIndex]);
+      }, 3000);
+
+      return () => clearInterval(interval);
+    }
+  }, [isGenerating]);
+
+  if (isLoading || isGenerating) {
     return (
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
@@ -26,21 +74,41 @@ export default function Analysis() {
             Back to Leaderboard
           </Link>
         </div>
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-8"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[...Array(4)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-6">
-                  <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                </CardContent>
-              </Card>
-            ))}
+        
+        {isGenerating ? (
+          <Card>
+            <CardContent className="p-8">
+              <div className="flex flex-col items-center justify-center space-y-4">
+                <Loader2 className="h-12 w-12 animate-spin text-blue-600 dark:text-blue-400" />
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Generating AI Analysis
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400 text-center max-w-md">
+                  {generationMessage}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-500 text-center">
+                  This may take 15-30 seconds as we perform a comprehensive analysis of the repository.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-8"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-6">
+                    <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }

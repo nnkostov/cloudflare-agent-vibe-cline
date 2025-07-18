@@ -227,11 +227,12 @@ export class GitHubAgent {
    */
   private async scanGitHub(
     topics: string[] = Config.github.topics,
-    minStars: number = Config.github.minStars
+    minStars: number = Config.github.minStars,
+    limit: number = 200
   ): Promise<Repository[]> {
-    this.log(`Scanning GitHub for topics: ${topics.join(', ')}`);
+    this.log(`Scanning GitHub for topics: ${topics.join(', ')}, limit: ${limit}`);
     
-    const repos = await this.github.searchTrendingRepos(topics, minStars);
+    const repos = await this.github.searchTrendingRepos(topics, minStars, undefined, limit);
     
     // Save repositories and metrics
     for (const repo of repos) {
