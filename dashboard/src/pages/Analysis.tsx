@@ -1,64 +1,162 @@
 import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, TrendingUp, Users, Lightbulb, AlertTriangle, Loader2 } from 'lucide-react';
 import { api, getScoreColor, getRecommendationBadge } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { formatDate } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 
+interface AnalysisData {
+  repo_id: string;
+  investment_score: number;
+  innovation_score: number;
+  team_score: number;
+  market_score: number;
+  recommendation: 'strong_buy' | 'buy' | 'hold' | 'pass';
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  key_questions: string[];
+  model_used: string;
+  analyzed_at: string;
+  technical_moat?: string;
+  scalability_assessment?: string;
+  developer_adoption_potential?: string;
+  growth_prediction?: string;
+}
+
 export default function Analysis() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
+  const queryClient = useQueryClient();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationMessage, setGenerationMessage] = useState('');
+  const [pollingInterval, setPollingInterval] = useState<number | false>(false);
+  const [shouldGenerate, setShouldGenerate] = useState(false);
 
-  const { data: analysis, isLoading, error } = useQuery({
+  // Query to check if analysis exists
+  const { data: analysis, isLoading, error } = useQuery<AnalysisData | null>({
     queryKey: ['analysis', owner, repo],
     queryFn: async () => {
+      console.log('[Analysis] Starting query for:', owner, repo);
       try {
-        // First try to get existing analysis
+        // Only fetch existing analysis, don't trigger generation here
         const result = await api.analyzeRepository(owner!, repo!, false);
+        console.log('[Analysis] Query result:', result);
+        console.log('[Analysis] Result type:', typeof result);
+        console.log('[Analysis] Result keys:', result ? Object.keys(result) : 'null');
         
-        // Check if we got a valid analysis response
+        // The API returns { message: string, analysis: AnalysisData } structure
         if (result && result.analysis) {
+          console.log('[Analysis] Found analysis in result.analysis');
+          console.log('[Analysis] Analysis data:', result.analysis);
+          console.log('[Analysis] analyzed_at field:', result.analysis.analyzed_at);
           return result.analysis;
-        } else if (result && result.message === 'Using cached analysis') {
-          return result.analysis;
-        } else {
-          // No analysis found, trigger generation
-          throw new Error('No analysis found');
         }
+        
+        // If we get an error response, return null to trigger generation
+        if (result && result.error) {
+          console.log('[Analysis] Got error response:', result.error);
+          return null;
+        }
+        
+        // Return null if no analysis exists yet
+        console.log('[Analysis] No analysis found, returning null');
+        return null;
       } catch (error: any) {
-        // Handle different error types
-        if (error.message?.includes('not found') || 
-            error.message?.includes('No analysis found') ||
-            error.message?.includes('Repository') && error.message?.includes('not found')) {
-          
-          setIsGenerating(true);
-          setGenerationMessage('No analysis found. Generating AI analysis...');
-          
-          try {
-            // Force analysis generation
-            const newAnalysis = await api.analyzeRepository(owner!, repo!, true);
-            setIsGenerating(false);
-            
-            // Return the analysis from the response
-            if (newAnalysis && newAnalysis.analysis) {
-              return newAnalysis.analysis;
-            } else {
-              throw new Error('Failed to generate analysis');
-            }
-          } catch (genError: any) {
-            setIsGenerating(false);
-            console.error('Analysis generation failed:', genError);
-            throw new Error(`Analysis generation failed: ${genError.message}`);
-          }
+        console.error('[Analysis] Query error:', error);
+        // If it's a 404, that means no analysis exists
+        if (error.message && error.message.includes('404')) {
+          console.log('[Analysis] 404 error - no analysis exists');
+          return null;
         }
-        throw error;
+        // For other errors, still return null to trigger generation
+        return null;
       }
     },
     enabled: !!owner && !!repo,
-    retry: 1,
+    retry: false,
+    refetchInterval: pollingInterval,
   });
+
+  // Mutation to trigger analysis generation
+  const generateAnalysisMutation = useMutation({
+    mutationFn: async () => {
+      console.log('[Analysis] Starting analysis generation...');
+      setIsGenerating(true);
+      setGenerationMessage('Initiating AI analysis...');
+      
+      try {
+        // Trigger analysis generation
+        const result = await api.analyzeRepository(owner!, repo!, true);
+        console.log('[Analysis] Generation API response:', result);
+        
+        // Handle different response formats
+        if (result) {
+          // Check if we got the analysis directly
+          if (result.analysis) {
+            console.log('[Analysis] Got immediate analysis result');
+            return result.analysis;
+          }
+          
+          // Check if it's wrapped in a response object
+          if (result.message && result.analysis) {
+            console.log('[Analysis] Got analysis in response wrapper');
+            return result.analysis;
+          }
+          
+          // If we get a message saying analysis is being generated, start polling
+          if (result.message && (result.message.includes('completed') || result.message.includes('Analysis'))) {
+            console.log('[Analysis] Analysis generation started, will poll for results');
+            return null;
+          }
+        }
+        
+        // Otherwise, start polling
+        console.log('[Analysis] No immediate result, will start polling');
+        return null;
+      } catch (error) {
+        console.error('[Analysis] Error during generation:', error);
+        // Don't throw - return null to trigger polling
+        return null;
+      }
+    },
+    onSuccess: (data) => {
+      console.log('[Analysis] Generation mutation success:', data);
+      if (data) {
+        // Analysis completed immediately
+        setIsGenerating(false);
+        setPollingInterval(false);
+        queryClient.setQueryData(['analysis', owner, repo], data);
+      } else {
+        // Start polling for results
+        console.log('[Analysis] Starting polling...');
+        setPollingInterval(3000); // Poll every 3 seconds
+      }
+    },
+    onError: (error: any) => {
+      console.error('[Analysis] Generation mutation error:', error);
+      setIsGenerating(false);
+      setPollingInterval(false);
+      // Don't let the error cause a blank screen - keep showing the loading state
+      // but with an error message
+    },
+  });
+
+  // Stop polling when analysis is found and force refresh
+  useEffect(() => {
+    if (analysis && isGenerating) {
+      console.log('[Analysis] Analysis complete, refreshing page...');
+      // Force refresh to ensure clean state
+      window.location.reload();
+    }
+  }, [analysis, isGenerating]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      setPollingInterval(false);
+    };
+  }, []);
 
   // Update generation message based on loading time
   useEffect(() => {
@@ -80,6 +178,30 @@ export default function Analysis() {
       return () => clearInterval(interval);
     }
   }, [isGenerating]);
+
+  // Trigger analysis generation if no analysis exists after initial load
+  useEffect(() => {
+    console.log('[Analysis] Auto-trigger check:', {
+      isLoading,
+      hasAnalysis: !!analysis,
+      hasError: !!error,
+      isGenerating,
+      owner,
+      repo,
+      shouldGenerate,
+      isPending: generateAnalysisMutation.isPending
+    });
+    
+    if (!isLoading && !analysis && !error && !isGenerating && owner && repo && !shouldGenerate) {
+      console.log('[Analysis] Conditions met - triggering generation...');
+      setShouldGenerate(true);
+      // Small delay to ensure state is settled
+      setTimeout(() => {
+        console.log('[Analysis] Calling generateAnalysisMutation.mutate()');
+        generateAnalysisMutation.mutate();
+      }, 100);
+    }
+  }, [isLoading, analysis, error, isGenerating, owner, repo, shouldGenerate]); // Removed mutation from deps
 
   if (isLoading || isGenerating) {
     return (

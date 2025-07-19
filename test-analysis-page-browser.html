@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Analysis Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .test-link {
+            display: inline-block;
+            margin: 10px 0;
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .test-link:hover {
+            background: #0056b3;
+        }
+        .info {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .steps {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .steps ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .steps li {
+            margin: 5px 0;
+        }
+        code {
+            background: #e9ecef;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Analysis Page Generation</h1>
+        
+        <div class="info">
+            <h2>Test Links</h2>
+            <p>Click these links to test the analysis page for repositories that may not have analysis yet:</p>
+            
+            <a href="https://github-ai-intelligence.nkostov.workers.dev/analysis/facebook/react" 
+               target="_blank" 
+               class="test-link">
+                Test: facebook/react
+            </a>
+            <br>
+            
+            <a href="https://github-ai-intelligence.nkostov.workers.dev/analysis/microsoft/vscode" 
+               target="_blank" 
+               class="test-link">
+                Test: microsoft/vscode
+            </a>
+            <br>
+            
+            <a href="https://github-ai-intelligence.nkostov.workers.dev/analysis/golang/go" 
+               target="_blank" 
+               class="test-link">
+                Test: golang/go
+            </a>
+        </div>
+        
+        <div class="steps">
+            <h2>Expected Behavior</h2>
+            <ol>
+                <li>Click on a test link above</li>
+                <li>The page should load and show a <strong>loading spinner</strong> with the message "Generating AI Analysis"</li>
+                <li>Progress messages should rotate every 3 seconds:
+                    <ul>
+                        <li>"Analyzing repository structure..."</li>
+                        <li>"Evaluating code quality and architecture..."</li>
+                        <li>"Assessing market potential..."</li>
+                        <li>"Calculating investment scores..."</li>
+                        <li>"Finalizing analysis..."</li>
+                    </ul>
+                </li>
+                <li>After 15-30 seconds, the analysis should appear automatically</li>
+                <li><strong>The page should NEVER go blank or white</strong></li>
+            </ol>
+        </div>
+        
+        <div class="info">
+            <h2>Troubleshooting</h2>
+            <p>If the page goes blank/white:</p>
+            <ol>
+                <li>Open browser DevTools (F12)</li>
+                <li>Check the Console tab for errors</li>
+                <li>Look for messages starting with <code>[Analysis]</code></li>
+                <li>Try hard refresh: <code>Ctrl+Shift+R</code> (Windows) or <code>Cmd+Shift+R</code> (Mac)</li>
+            </ol>
+        </div>
+        
+        <div class="info">
+            <h2>Direct Dashboard Link</h2>
+            <p>You can also test from the main dashboard:</p>
+            <a href="https://github-ai-intelligence.nkostov.workers.dev" 
+               target="_blank" 
+               class="test-link">
+                Open Dashboard
+            </a>
+            <p>Then navigate to Leaderboard and click "Generate Analysis" on any repository.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -87,6 +87,13 @@ class WorkerService extends BaseService {
         newHeaders.set(key, value);
       });
       
+      // Add cache control headers for JavaScript files to prevent caching issues
+      if (url.pathname.endsWith('.js')) {
+        newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        newHeaders.set('Pragma', 'no-cache');
+        newHeaders.set('Expires', '0');
+      }
+      
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -1495,10 +1502,11 @@ class WorkerService extends BaseService {
    */
   private async handleVersion(): Promise<Response> {
     return this.handleError(async () => {
-      // Version will be injected at build time or read from environment
-      const version = '2.0.1'; // This will be updated by the auto-versioning system
+      // Read version from package.json or environment
+      const packageVersion = '2.0.15'; // Updated by auto-versioning
+      const version = packageVersion;
       const buildTimestamp = new Date().toISOString();
-      const gitCommit = 'unknown'; // Could be injected at build time
+      const gitCommit = 'unknown';
       
       return this.jsonResponse({
         version,
