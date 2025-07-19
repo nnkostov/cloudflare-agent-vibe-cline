@@ -408,7 +408,7 @@ export default function Controls() {
                     <div className="text-xs text-blue-700 dark:text-blue-300">
                       {(status as any)?.tierDistribution ? 
                         `${(status as any).tierDistribution.tier1} Tier 1 • ${(status as any).tierDistribution.tier2} Tier 2 • ${(status as any).tierDistribution.tier3} Tier 3 • ${(status as any).tierDistribution.unassigned || 0} Unassigned`
-                        : '83 Tier 1 • 189 Tier 2 • 1,214 Tier 3 • 1 Unassigned'
+                        : '83 Tier 1 • 189 Tier 2 • 1,187 Tier 3 • 1 Unassigned'
                       }
                     </div>
                   </div>

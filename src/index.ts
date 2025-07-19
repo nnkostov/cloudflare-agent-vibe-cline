@@ -890,25 +890,26 @@ class WorkerService extends BaseService {
       const { StorageService } = await import('./services/storage');
       const storage = new StorageService(this.env);
       
-      // Use JOIN-based counting for consistency with Leaderboard page
+      // Use active filtering (excluding archived and fork repositories) for consistency
+      // This matches the filtering used by DiagnosticsService and StorageUnifiedService
       const tierCounts = await Promise.all([
         this.env.DB.prepare(`
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
-          WHERE rt.tier = 1
+          WHERE rt.tier = 1 AND r.is_archived = 0 AND r.is_fork = 0
         `).first(),
         this.env.DB.prepare(`
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
-          WHERE rt.tier = 2
+          WHERE rt.tier = 2 AND r.is_archived = 0 AND r.is_fork = 0
         `).first(),
         this.env.DB.prepare(`
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
-          WHERE rt.tier = 3
+          WHERE rt.tier = 3 AND r.is_archived = 0 AND r.is_fork = 0
         `).first()
       ]);
       
@@ -916,25 +917,31 @@ class WorkerService extends BaseService {
       const tier2Count = (tierCounts[1] as any)?.count || 0;
       const tier3Count = (tierCounts[2] as any)?.count || 0;
       
-      // Count analyzed repositories (those with recent analysis)
+      // Count analyzed repositories (those with recent analysis) - also use active filtering
       const analyzedCounts = await Promise.all([
         this.env.DB.prepare(`
           SELECT COUNT(DISTINCT rt.repo_id) as count 
           FROM repo_tiers rt 
           JOIN analyses a ON rt.repo_id = a.repo_id 
-          WHERE rt.tier = 1 AND a.created_at > datetime('now', '-30 days')
+          JOIN repositories r ON rt.repo_id = r.id
+          WHERE rt.tier = 1 AND r.is_archived = 0 AND r.is_fork = 0 
+            AND a.created_at > datetime('now', '-30 days')
         `).first(),
         this.env.DB.prepare(`
           SELECT COUNT(DISTINCT rt.repo_id) as count 
           FROM repo_tiers rt 
           JOIN analyses a ON rt.repo_id = a.repo_id 
-          WHERE rt.tier = 2 AND a.created_at > datetime('now', '-30 days')
+          JOIN repositories r ON rt.repo_id = r.id
+          WHERE rt.tier = 2 AND r.is_archived = 0 AND r.is_fork = 0 
+            AND a.created_at > datetime('now', '-30 days')
         `).first(),
         this.env.DB.prepare(`
           SELECT COUNT(DISTINCT rt.repo_id) as count 
           FROM repo_tiers rt 
           JOIN analyses a ON rt.repo_id = a.repo_id 
-          WHERE rt.tier = 3 AND a.created_at > datetime('now', '-30 days')
+          JOIN repositories r ON rt.repo_id = r.id
+          WHERE rt.tier = 3 AND r.is_archived = 0 AND r.is_fork = 0 
+            AND a.created_at > datetime('now', '-30 days')
         `).first()
       ]);
       

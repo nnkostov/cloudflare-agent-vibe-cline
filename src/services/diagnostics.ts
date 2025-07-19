@@ -325,8 +325,9 @@ export class DiagnosticsService extends BaseService {
   }
 
   /**
-   * Get tier distribution using JOIN-based counting for consistency
-   * This ensures the counts match what's shown on the Leaderboard page
+   * Get tier distribution using active repository filtering for consistency
+   * This matches the filtering logic used by StorageUnifiedService.getReposByTier()
+   * and ensures consistent counts across Overview, Controls, and Leaderboard pages
    */
   async getTierDistribution(): Promise<{
     tier1: number;
@@ -335,34 +336,36 @@ export class DiagnosticsService extends BaseService {
     unassigned: number;
   }> {
     try {
-      // Use JOIN-based counting to match StorageUnifiedService.getReposByTier()
-      // This ensures consistency with the Leaderboard page
-      const [tier1, tier2, tier3, total] = await Promise.all([
+      // Use active filtering (excluding archived and fork repositories) for ALL counts
+      // This ensures consistency with Leaderboard page counts
+      const [tier1, tier2, tier3, totalActive] = await Promise.all([
         this.env.DB.prepare(`
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
-          WHERE rt.tier = 1
+          WHERE rt.tier = 1 AND r.is_archived = 0 AND r.is_fork = 0
         `).first<{ count: number }>(),
         this.env.DB.prepare(`
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
-          WHERE rt.tier = 2
+          WHERE rt.tier = 2 AND r.is_archived = 0 AND r.is_fork = 0
         `).first<{ count: number }>(),
         this.env.DB.prepare(`
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
-          WHERE rt.tier = 3
+          WHERE rt.tier = 3 AND r.is_archived = 0 AND r.is_fork = 0
         `).first<{ count: number }>(),
-        this.env.DB.prepare(
-          "SELECT COUNT(*) as count FROM repositories"
-        ).first<{ count: number }>(),
+        this.env.DB.prepare(`
+          SELECT COUNT(*) as count 
+          FROM repositories 
+          WHERE is_archived = 0 AND is_fork = 0
+        `).first<{ count: number }>(),
       ]);
 
       const assigned = (tier1?.count || 0) + (tier2?.count || 0) + (tier3?.count || 0);
-      const unassigned = (total?.count || 0) - assigned;
+      const unassigned = (totalActive?.count || 0) - assigned;
 
       return {
         tier1: tier1?.count || 0,
