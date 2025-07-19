@@ -325,7 +325,8 @@ export class DiagnosticsService extends BaseService {
   }
 
   /**
-   * Get tier distribution
+   * Get tier distribution using JOIN-based counting for consistency
+   * This ensures the counts match what's shown on the Leaderboard page
    */
   async getTierDistribution(): Promise<{
     tier1: number;
@@ -334,16 +335,27 @@ export class DiagnosticsService extends BaseService {
     unassigned: number;
   }> {
     try {
+      // Use JOIN-based counting to match StorageUnifiedService.getReposByTier()
+      // This ensures consistency with the Leaderboard page
       const [tier1, tier2, tier3, total] = await Promise.all([
-        this.env.DB.prepare(
-          "SELECT COUNT(*) as count FROM repo_tiers WHERE tier = 1"
-        ).first<{ count: number }>(),
-        this.env.DB.prepare(
-          "SELECT COUNT(*) as count FROM repo_tiers WHERE tier = 2"
-        ).first<{ count: number }>(),
-        this.env.DB.prepare(
-          "SELECT COUNT(*) as count FROM repo_tiers WHERE tier = 3"
-        ).first<{ count: number }>(),
+        this.env.DB.prepare(`
+          SELECT COUNT(*) as count 
+          FROM repositories r 
+          JOIN repo_tiers rt ON r.id = rt.repo_id 
+          WHERE rt.tier = 1
+        `).first<{ count: number }>(),
+        this.env.DB.prepare(`
+          SELECT COUNT(*) as count 
+          FROM repositories r 
+          JOIN repo_tiers rt ON r.id = rt.repo_id 
+          WHERE rt.tier = 2
+        `).first<{ count: number }>(),
+        this.env.DB.prepare(`
+          SELECT COUNT(*) as count 
+          FROM repositories r 
+          JOIN repo_tiers rt ON r.id = rt.repo_id 
+          WHERE rt.tier = 3
+        `).first<{ count: number }>(),
         this.env.DB.prepare(
           "SELECT COUNT(*) as count FROM repositories"
         ).first<{ count: number }>(),

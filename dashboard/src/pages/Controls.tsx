@@ -4,6 +4,7 @@ import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clo
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BatchProgress } from '@/components/ui/BatchProgress';
+import CyberSystemViz from '@/components/controls/CyberSystemViz';
 
 export default function Controls() {
   const queryClient = useQueryClient();
@@ -169,6 +170,9 @@ export default function Controls() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">System Controls</h2>
+
+      {/* Cyber System Command Center Visualization - TOP POSITION */}
+      <CyberSystemViz status={status} analysisStats={analysisStats} />
 
       {/* Status Message */}
       {statusMessage && (

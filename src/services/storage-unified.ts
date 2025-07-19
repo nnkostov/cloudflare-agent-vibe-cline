@@ -605,6 +605,8 @@ export class StorageUnifiedService extends BaseService {
   }
 
   async saveRepoTier(tier: RepoTier): Promise<void> {
+    // Data integrity check: Ensure repository exists before creating tier assignment
+    await this.validateRepositoryExists(tier.repo_id, 'saveRepoTier');
     return this.enhancedService.saveRepoTier(tier);
   }
 
@@ -638,6 +640,99 @@ export class StorageUnifiedService extends BaseService {
     tier: RepoTier | null;
   }> {
     return this.enhancedService.getComprehensiveMetrics(repoId);
+  }
+
+  /**
+   * Data integrity validation methods
+   */
+  private async validateRepositoryExists(repoId: string, operation: string): Promise<void> {
+    const exists = await this.dbFirst<{ count: number }>(
+      'SELECT COUNT(*) as count FROM repositories WHERE id = ?',
+      repoId
+    );
+    
+    if (!exists || exists.count === 0) {
+      const error = `Data integrity violation in ${operation}: Repository ${repoId} does not exist`;
+      console.error(error);
+      throw new Error(error);
+    }
+  }
+
+  /**
+   * Validate data consistency and log any issues
+   */
+  async validateDataConsistency(): Promise<{
+    isConsistent: boolean;
+    issues: string[];
+    orphanedRecords: number;
+  }> {
+    const issues: string[] = [];
+    let orphanedRecords = 0;
+
+    try {
+      // Check for orphaned repo_tiers records
+      const orphanedTiers = await this.dbFirst<{ count: number }>(
+        `SELECT COUNT(*) as count 
+         FROM repo_tiers rt 
+         LEFT JOIN repositories r ON rt.repo_id = r.id 
+         WHERE r.id IS NULL`
+      );
+      
+      if (orphanedTiers && orphanedTiers.count > 0) {
+        orphanedRecords += orphanedTiers.count;
+        issues.push(`${orphanedTiers.count} orphaned repo_tiers records found`);
+      }
+
+      // Check for orphaned analyses
+      const orphanedAnalyses = await this.dbFirst<{ count: number }>(
+        `SELECT COUNT(*) as count 
+         FROM analyses a 
+         LEFT JOIN repositories r ON a.repo_id = r.id 
+         WHERE r.id IS NULL`
+      );
+      
+      if (orphanedAnalyses && orphanedAnalyses.count > 0) {
+        orphanedRecords += orphanedAnalyses.count;
+        issues.push(`${orphanedAnalyses.count} orphaned analyses records found`);
+      }
+
+      // Check for orphaned contributors
+      const orphanedContributors = await this.dbFirst<{ count: number }>(
+        `SELECT COUNT(*) as count 
+         FROM contributors c 
+         LEFT JOIN repositories r ON c.repo_id = r.id 
+         WHERE r.id IS NULL`
+      );
+      
+      if (orphanedContributors && orphanedContributors.count > 0) {
+        orphanedRecords += orphanedContributors.count;
+        issues.push(`${orphanedContributors.count} orphaned contributors records found`);
+      }
+
+      // Check for duplicate tier assignments
+      const duplicateTiers = await this.dbFirst<{ count: number }>(
+        `SELECT COUNT(*) as count 
+         FROM (
+           SELECT repo_id 
+           FROM repo_tiers 
+           GROUP BY repo_id 
+           HAVING COUNT(*) > 1
+         )`
+      );
+      
+      if (duplicateTiers && duplicateTiers.count > 0) {
+        issues.push(`${duplicateTiers.count} repositories have multiple tier assignments`);
+      }
+
+    } catch (error) {
+      issues.push(`Validation query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    return {
+      isConsistent: issues.length === 0,
+      issues,
+      orphanedRecords
+    };
   }
 }
 

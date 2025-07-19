@@ -257,6 +257,38 @@ class ApiClient {
       recommendations: string[];
     }>('/analysis/stats');
   }
+
+  // System Heartbeat
+  getWorkerMetrics = async () => {
+    return this.request<{
+      timestamp: string;
+      type: 'heartbeat';
+      metrics: Array<{
+        timestamp: string;
+        heartbeat: number;
+        components: {
+          apiActivity: number;
+          analysisActivity: number;
+          dbActivity: number;
+          systemActivity: number;
+        };
+        activityType: 'user-interaction' | 'ai-processing' | 'data-operations' | 'system-maintenance';
+      }>;
+      summary: {
+        averageHeartbeat: number;
+        peakHeartbeat: number;
+        currentRhythm: 'steady' | 'active' | 'intense';
+        systemHealth: 'high-activity' | 'normal' | 'low-activity';
+      };
+      performance: {
+        totalExecutionTime: number;
+        checkpoints: number;
+        warnings: number;
+        memoryUsage?: number;
+        summary: string;
+      };
+    }>('/worker-metrics');
+  }
 }
 
 export const api = new ApiClient();
