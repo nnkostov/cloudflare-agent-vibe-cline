@@ -179,6 +179,84 @@ class ApiClient {
       method: 'POST',
     });
   }
+
+  // Batch analysis
+  triggerBatchAnalysis = async (target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible') => {
+    return this.request<{
+      message: string;
+      batchId?: string;
+      target: string;
+      totalRepos: number;
+      needingAnalysis: number;
+      queued: number;
+      batchSize?: number;
+      delayBetweenAnalyses?: string;
+      maxRetries?: number;
+      estimatedCompletionTime?: string;
+      repositories: Array<{
+        name: string;
+        priority?: number;
+        tier?: number;
+      }> | string[];
+    }>('/analyze/batch', {
+      method: 'POST',
+      body: JSON.stringify({ target }),
+    });
+  }
+
+  // Batch analysis status
+  getBatchAnalysisStatus = async (batchId: string) => {
+    return this.request<{
+      batchId: string;
+      status: 'running' | 'completed' | 'failed' | 'not_found';
+      progress?: {
+        total: number;
+        completed: number;
+        failed: number;
+        currentRepository: string | null;
+        startTime: number;
+        estimatedCompletion: number | null;
+      };
+      error?: string;
+    }>(`/analyze/batch/status?batchId=${encodeURIComponent(batchId)}`);
+  }
+
+  // Analysis statistics
+  getAnalysisStats = async () => {
+    return this.request<{
+      timestamp: string;
+      totalRepositories: number;
+      analyzedRepositories: number;
+      remainingRepositories: number;
+      analysisProgress: number;
+      tierBreakdown: {
+        tier1: {
+          total: number;
+          analyzed: number;
+          remaining: number;
+          progress: number;
+        };
+        tier2: {
+          total: number;
+          analyzed: number;
+          remaining: number;
+          progress: number;
+        };
+        tier3: {
+          total: number;
+          analyzed: number;
+          remaining: number;
+          progress: number;
+        };
+      };
+      batchInfo: {
+        batchSize: number;
+        estimatedBatchesRemaining: number;
+        estimatedTimeRemaining: string;
+      };
+      recommendations: string[];
+    }>('/analysis/stats');
+  }
 }
 
 export const api = new ApiClient();

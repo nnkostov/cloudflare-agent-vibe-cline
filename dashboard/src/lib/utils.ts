@@ -70,18 +70,18 @@ export function getTierBadge(tier: 1 | 2 | 3): { color: string; text: string } {
   switch (tier) {
     case 1:
       return { 
-        color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', 
-        text: 'Hot Prospect' 
+        color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200', 
+        text: 'Premium Target' 
       };
     case 2:
       return { 
         color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200', 
-        text: 'Rising Star' 
+        text: 'Emerging Opportunity' 
       };
     case 3:
       return { 
         color: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200', 
-        text: 'Long Tail' 
+        text: 'Market Coverage' 
       };
   }
 }

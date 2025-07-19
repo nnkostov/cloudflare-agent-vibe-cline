@@ -17,6 +17,19 @@ interface ScanProgress {
   logs: string[];
 }
 
+interface BatchProgress {
+  batchId: string;
+  status: 'running' | 'completed' | 'failed' | 'not_found';
+  total: number;
+  completed: number;
+  failed: number;
+  currentRepository: string | null;
+  startTime: number;
+  estimatedCompletion: number | null;
+  repositories: string[];
+  results: Array<{ repo: string; status: 'success' | 'failed'; error?: string }>;
+}
+
 export class GitHubAgent {
   private state: DurableObjectState;
   private env: Env;
@@ -78,6 +91,8 @@ export class GitHubAgent {
         '/init': () => this.handleInit(),
         '/metrics': () => this.handleMetrics(request),
         '/tiers': () => this.handleTiers(request),
+        '/batch/status': () => this.handleBatchStatus(request),
+        '/batch/start': () => this.handleBatchStart(request),
       };
 
       const handler = handlers[url.pathname];
@@ -166,7 +181,16 @@ export class GitHubAgent {
     if (!force && hasAnalysis) {
       const analysis = await this.storage.getLatestAnalysis(repo.id);
       if (analysis) {
-        return this.jsonResponse(analysis);
+        return this.jsonResponse({ 
+          message: 'Using cached analysis', 
+          analysis,
+          repository: {
+            id: repo.id,
+            full_name: repo.full_name,
+            stars: repo.stars,
+            language: repo.language
+          }
+        });
       }
     }
     
@@ -181,7 +205,16 @@ export class GitHubAgent {
       }, 500);
     }
     
-    return this.jsonResponse(analysis);
+    return this.jsonResponse({ 
+      message: 'Analysis completed',
+      analysis,
+      repository: {
+        id: repo.id,
+        full_name: repo.full_name,
+        stars: repo.stars,
+        language: repo.language
+      }
+    });
   }
 
   /**
@@ -228,7 +261,7 @@ export class GitHubAgent {
   private async scanGitHub(
     topics: string[] = Config.github.topics,
     minStars: number = Config.github.minStars,
-    limit: number = 200
+    limit: number = 1000
   ): Promise<Repository[]> {
     this.log(`Scanning GitHub for topics: ${topics.join(', ')}, limit: ${limit}`);
     
@@ -465,6 +498,248 @@ export class GitHubAgent {
   }
 
   /**
+   * Handle batch status request
+   */
+  private async handleBatchStatus(request: Request): Promise<Response> {
+    const body = await request.json() as any;
+    const { batchId } = body;
+    
+    if (!batchId) {
+      return this.jsonResponse({ error: 'batchId required' }, 400);
+    }
+    
+    // Get batch progress from Durable Object storage
+    const batchProgress = await this.state.storage.get(`batch_${batchId}`) as BatchProgress | undefined;
+    
+    if (!batchProgress) {
+      return this.jsonResponse({ 
+        error: 'Batch not found',
+        batchId,
+        status: 'not_found'
+      }, 404);
+    }
+    
+    return this.jsonResponse({
+      batchId,
+      status: batchProgress.status,
+      progress: {
+        total: batchProgress.total,
+        completed: batchProgress.completed,
+        failed: batchProgress.failed,
+        currentRepository: batchProgress.currentRepository,
+        startTime: batchProgress.startTime,
+        estimatedCompletion: batchProgress.estimatedCompletion
+      }
+    });
+  }
+
+  /**
+   * Handle batch start request
+   */
+  private async handleBatchStart(request: Request): Promise<Response> {
+    const body = await request.json() as any;
+    const { batchId, repositories } = body;
+    
+    if (!batchId || !repositories || !Array.isArray(repositories)) {
+      return this.jsonResponse({ error: 'batchId and repositories array required' }, 400);
+    }
+    
+    console.log(`Starting batch analysis ${batchId} with ${repositories.length} repositories`);
+    
+    // Start the batch analysis
+    await this.startBatchAnalysis(batchId, repositories);
+    
+    return this.jsonResponse({
+      message: 'Batch analysis started',
+      batchId,
+      repositoryCount: repositories.length
+    });
+  }
+
+  /**
+   * Start batch analysis with progress tracking
+   */
+  async startBatchAnalysis(batchId: string, repositories: string[]): Promise<void> {
+    const batchProgress: BatchProgress = {
+      batchId,
+      status: 'running',
+      total: repositories.length,
+      completed: 0,
+      failed: 0,
+      currentRepository: null,
+      startTime: Date.now(),
+      estimatedCompletion: null,
+      repositories,
+      results: []
+    };
+    
+    // Store initial batch progress
+    await this.state.storage.put(`batch_${batchId}`, batchProgress);
+    
+    // Process repositories in background
+    this.processBatchAnalysis(batchProgress).catch(error => {
+      console.error(`Batch ${batchId} failed:`, error);
+      this.updateBatchStatus(batchId, 'failed');
+    });
+  }
+
+  /**
+   * Process batch analysis with real-time progress updates
+   */
+  private async processBatchAnalysis(batchProgress: BatchProgress): Promise<void> {
+    const { batchId, repositories } = batchProgress;
+    const DELAY_BETWEEN_ANALYSES = 2000; // 2 seconds
+    const MAX_RETRIES = 2;
+    
+    console.log(`[${batchId}] Starting batch analysis of ${repositories.length} repositories`);
+    
+    for (let i = 0; i < repositories.length; i++) {
+      const repoFullName = repositories[i];
+      
+      try {
+        // Update current repository
+        batchProgress.currentRepository = repoFullName;
+        batchProgress.estimatedCompletion = batchProgress.startTime + 
+          ((Date.now() - batchProgress.startTime) / (i + 1)) * repositories.length;
+        
+        await this.state.storage.put(`batch_${batchId}`, batchProgress);
+        
+        console.log(`[${batchId}] Analyzing ${repoFullName} (${i + 1}/${repositories.length})`);
+        
+        // Get repository from database by full_name
+        const [owner, name] = repoFullName.split('/');
+        let repo = await this.getRepositoryByFullName(repoFullName);
+        
+        if (!repo) {
+          // Try to fetch from GitHub if not in database
+          try {
+            repo = await this.github.getRepoDetails(owner, name);
+            await this.storage.saveRepository(repo);
+          } catch (error) {
+            console.error(`[${batchId}] Failed to fetch ${repoFullName}:`, error);
+            batchProgress.failed++;
+            batchProgress.results.push({
+              repo: repoFullName,
+              status: 'failed',
+              error: 'Repository not found'
+            });
+            continue;
+          }
+        }
+        
+        // Retry logic for analysis
+        let lastError = null;
+        let success = false;
+        
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            const analysis = await this.analyzeRepository(repo, true);
+            if (analysis) {
+              batchProgress.completed++;
+              batchProgress.results.push({
+                repo: repoFullName,
+                status: 'success'
+              });
+              success = true;
+              console.log(`[${batchId}] ✅ Successfully analyzed ${repoFullName}`);
+              break;
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : 'Unknown error';
+            console.log(`[${batchId}] ❌ Failed to analyze ${repoFullName} (attempt ${attempt}): ${lastError}`);
+            
+            if (attempt < MAX_RETRIES) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+          }
+        }
+        
+        if (!success) {
+          batchProgress.failed++;
+          batchProgress.results.push({
+            repo: repoFullName,
+            status: 'failed',
+            error: lastError || 'Analysis failed'
+          });
+        }
+        
+        // Update progress
+        await this.state.storage.put(`batch_${batchId}`, batchProgress);
+        
+        // Rate limiting
+        if (i < repositories.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ANALYSES));
+        }
+        
+      } catch (error) {
+        console.error(`[${batchId}] Error processing ${repoFullName}:`, error);
+        batchProgress.failed++;
+        batchProgress.results.push({
+          repo: repoFullName,
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        await this.state.storage.put(`batch_${batchId}`, batchProgress);
+      }
+    }
+    
+    // Mark batch as completed
+    batchProgress.status = 'completed';
+    batchProgress.currentRepository = null;
+    await this.state.storage.put(`batch_${batchId}`, batchProgress);
+    
+    const successRate = Math.round((batchProgress.completed / batchProgress.total) * 100);
+    console.log(`[${batchId}] 🎉 Batch analysis completed: ${batchProgress.completed} successful, ${batchProgress.failed} failed (${successRate}% success rate)`);
+  }
+
+  /**
+   * Update batch status
+   */
+  private async updateBatchStatus(batchId: string, status: 'running' | 'completed' | 'failed'): Promise<void> {
+    const batchProgress = await this.state.storage.get(`batch_${batchId}`) as BatchProgress | undefined;
+    if (batchProgress) {
+      batchProgress.status = status;
+      await this.state.storage.put(`batch_${batchId}`, batchProgress);
+    }
+  }
+
+  /**
+   * Get repository by full name (owner/name)
+   */
+  private async getRepositoryByFullName(fullName: string): Promise<Repository | null> {
+    // Query the database for a repository with the matching full_name
+    const result = await this.env.DB.prepare(
+      'SELECT * FROM repositories WHERE full_name = ?'
+    ).bind(fullName).first();
+    
+    if (!result) {
+      return null;
+    }
+    
+    // Parse the repository data
+    return {
+      id: String(result.id),
+      name: String(result.name),
+      owner: String(result.owner),
+      full_name: String(result.full_name),
+      description: String(result.description || ''),
+      stars: Number(result.stars || 0),
+      forks: Number(result.forks || 0),
+      open_issues: Number(result.open_issues || 0),
+      language: String(result.language || ''),
+      topics: Array.isArray(result.topics) ? result.topics : JSON.parse(String(result.topics || '[]')),
+      created_at: String(result.created_at),
+      updated_at: String(result.updated_at),
+      pushed_at: String(result.pushed_at),
+      is_archived: Boolean(result.is_archived),
+      is_fork: Boolean(result.is_fork),
+      html_url: String(result.html_url || ''),
+      clone_url: String(result.clone_url || ''),
+      default_branch: String(result.default_branch || 'main'),
+    } as Repository;
+  }
+
+  /**
    * Comprehensive repository scanning with tiered approach
    */
   private async comprehensiveScan(force: boolean = false, minRepos: number = 10): Promise<{ processed: number, analyzed: number, discovered: number }> {
@@ -489,8 +764,9 @@ export class GitHubAgent {
         this.scanProgress.repoCount = repoCount;
       }
       
-      // If no repos, run discovery first
-      if (repoCount < 100) {
+      // Run discovery phase to find new repositories
+      // Always run discovery in force mode, or periodically in normal mode
+      if (force || repoCount === 0 || Math.random() < 0.3) { // 30% chance in normal mode
         this.log('Running discovery phase to find repositories...');
         if (this.scanProgress) {
           this.scanProgress.phase = 'discovery';

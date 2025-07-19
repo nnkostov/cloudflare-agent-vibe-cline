@@ -65,6 +65,14 @@ export class StorageService extends BaseService {
     return result ? this.parseRepository(result) : null;
   }
 
+  async getRepositoryByName(owner: string, name: string): Promise<Repository | null> {
+    const result = await this.dbFirst<any>(
+      'SELECT * FROM repositories WHERE owner = ? AND name = ?',
+      owner, name
+    );
+    return result ? this.parseRepository(result) : null;
+  }
+
   // Metrics operations
   async saveMetrics(metrics: RepoMetrics): Promise<void> {
     await this.dbRun(`

@@ -35,7 +35,7 @@ export default function Layout({ children }: LayoutProps) {
             <div className="flex items-center">
               <Github className="h-8 w-8 text-gray-900 dark:text-white" />
               <h1 className="ml-3 text-xl font-semibold text-gray-900 dark:text-white">
-                AI Intelligence Dashboard
+                AI Repository Intelligence Dashboard
               </h1>
             </div>
             <div className="flex items-center space-x-4">

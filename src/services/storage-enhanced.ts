@@ -365,14 +365,23 @@ export class StorageEnhancedService extends BaseService {
     engagement_score: number;
   }): Promise<void> {
     try {
-      // Determine tier based on metrics
+      // Determine tier based on metrics - PROPER LOGIC for balanced distribution
       let tier: 1 | 2 | 3;
-      if (metrics.stars >= 500 && metrics.growth_velocity > 20) {
-        tier = 1; // Hot prospect - very selective
-      } else if (metrics.stars >= 100 || metrics.growth_velocity > 10) {
-        tier = 2; // Rising star - moderately selective
-      } else {
-        tier = 3; // Long tail - everything else (catch-all)
+      
+      // Tier 1: Top 15% of repositories (elite performers)
+      // High star count OR exceptional growth velocity
+      if (metrics.stars >= 50000 || (metrics.stars >= 20000 && metrics.growth_velocity > 10)) {
+        tier = 1;
+      }
+      // Tier 2: Next 20-25% of repositories (solid performers)  
+      // Good star count OR moderate growth velocity
+      else if (metrics.stars >= 15000 || (metrics.stars >= 5000 && metrics.growth_velocity > 5)) {
+        tier = 2;
+      }
+      // Tier 3: Remaining 60-70% of repositories (ALL other AI/ML repos)
+      // This ensures ALL discovered AI/ML repositories get a tier assignment
+      else {
+        tier = 3;
       }
 
       // Calculate scan priority

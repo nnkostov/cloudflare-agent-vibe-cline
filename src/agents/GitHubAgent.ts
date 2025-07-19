@@ -121,7 +121,7 @@ export class GitHubAgent {
     const { repoId, repoOwner, repoName, force } = body;
     
     if (!repoId && (!repoOwner || !repoName)) {
-      return this.jsonResponse({ error: 'Missing required parameters' }, 400);
+      return this.jsonResponse({ error: 'Missing required parameters: need either repoId or repoOwner+repoName' }, 400);
     }
     
     // Get repository
@@ -129,27 +129,63 @@ export class GitHubAgent {
     if (repoId) {
       const stored = await this.storage.getRepository(repoId);
       if (!stored) {
-        return this.jsonResponse({ error: 'Repository not found' }, 404);
+        return this.jsonResponse({ error: 'Repository not found by ID' }, 404);
       }
       repo = stored;
     } else {
-      repo = await this.github.getRepoDetails(repoOwner, repoName);
-      await this.storage.saveRepository(repo);
+      // First try to find in database
+      let stored = await this.storage.getRepositoryByName(repoOwner, repoName);
+      if (stored) {
+        repo = stored;
+      } else {
+        // If not found, fetch from GitHub and save
+        try {
+          repo = await this.github.getRepoDetails(repoOwner, repoName);
+          await this.storage.saveRepository(repo);
+          console.log(`Repository ${repoOwner}/${repoName} fetched from GitHub and saved`);
+        } catch (error) {
+          return this.jsonResponse({ 
+            error: `Repository ${repoOwner}/${repoName} not found on GitHub: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          }, 404);
+        }
+      }
     }
     
     // Check cache
     if (!force && await this.storage.hasRecentAnalysis(repo.id)) {
       const analysis = await this.storage.getLatestAnalysis(repo.id);
-      return this.jsonResponse({ message: 'Using cached analysis', analysis });
+      return this.jsonResponse({ 
+        message: 'Using cached analysis', 
+        analysis,
+        repository: {
+          id: repo.id,
+          full_name: repo.full_name,
+          stars: repo.stars,
+          language: repo.language
+        }
+      });
     }
     
     // Perform analysis
-    const analysis = await this.analyzeRepository(repo);
-    
-    return this.jsonResponse({ 
-      message: 'Analysis completed',
-      analysis 
-    });
+    try {
+      const analysis = await this.analyzeRepository(repo);
+      
+      return this.jsonResponse({ 
+        message: 'Analysis completed',
+        analysis,
+        repository: {
+          id: repo.id,
+          full_name: repo.full_name,
+          stars: repo.stars,
+          language: repo.language
+        }
+      });
+    } catch (error) {
+      console.error(`Error analyzing ${repo.full_name}:`, error);
+      return this.jsonResponse({ 
+        error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      }, 500);
+    }
   }
 
   /**
@@ -299,7 +335,8 @@ export class GitHubAgent {
       }
     }
     
-    return analysis;
+    // Return the analysis in the format expected by the frontend
+    return await this.storage.getLatestAnalysis(repo.id);
   }
 
   /**

@@ -347,15 +347,22 @@ export class StorageUnifiedService extends BaseService {
   /**
    * Get repositories by tier
    */
-  async getReposByTier(tier: 1 | 2 | 3, limit: number = 100): Promise<any[]> {
-    const results = await this.dbAll<any>(`
-      SELECT r.*, rt.tier
-      FROM repositories r
-      INNER JOIN repo_tiers rt ON r.id = rt.repo_id
-      WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
-      ORDER BY r.stars DESC
-      LIMIT ?
-    `, tier, limit);
+  async getReposByTier(tier: 1 | 2 | 3, limit?: number): Promise<any[]> {
+    const query = limit 
+      ? `SELECT r.*, rt.tier
+         FROM repositories r
+         INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+         WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+         ORDER BY r.stars DESC
+         LIMIT ?`
+      : `SELECT r.*, rt.tier
+         FROM repositories r
+         INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+         WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+         ORDER BY r.stars DESC`;
+    
+    const params = limit ? [tier, limit] : [tier];
+    const results = await this.dbAll<any>(query, ...params);
     
     return results.map(this.parseRepositoryWithTier);
   }

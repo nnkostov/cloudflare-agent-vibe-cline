@@ -176,6 +176,8 @@ class WorkerService extends BaseService {
       '/logs/scan-activity': () => this.handleScanActivity(request),
       '/logs/critical-alerts': () => this.handleCriticalAlerts(request),
       '/analyze/batch': () => this.handleBatchAnalyze(request),
+      '/analyze/batch/status': () => this.handleBatchStatus(request),
+      '/analysis/stats': () => this.handleAnalysisStats(),
     };
 
     const handler = directHandlers[agentPath];
@@ -214,8 +216,8 @@ class WorkerService extends BaseService {
           const hasHistoricalData = repos.some(r => r.growth_percent !== undefined);
           console.log(`Trending repos: Using ${hasHistoricalData ? 'historical growth data' : 'hybrid trending algorithm'}`);
           
-          // For now, return a simplified response without analysis to avoid timeouts
-          const simplifiedRepos = repos.slice(0, 30).map(repo => ({
+          // Return all trending repositories (increased from 30 to show all)
+          const simplifiedRepos = repos.slice(0, 200).map(repo => ({
             id: repo.id,
             name: repo.name,
             full_name: repo.full_name,
@@ -356,7 +358,7 @@ class WorkerService extends BaseService {
       return this.jsonResponse({ 
         tier, 
         count: repos.length, 
-        repos: repos.slice(0, 100) 
+        repos: repos // Return all repositories without limit
       });
     }, 'get repos by tier');
   }
@@ -740,28 +742,35 @@ class WorkerService extends BaseService {
       const { StorageUnifiedService } = await import('./services/storage-unified');
       const storage = new StorageUnifiedService(this.env);
       
-      console.log(`Starting batch analysis for ${target} repositories...`);
+      console.log(`Starting enhanced batch analysis for ${target} repositories...`);
       
-      // Get repositories that need analysis
+      // Get repositories that need analysis with priority ordering
       let reposToAnalyze: any[] = [];
       
       if (target === 'visible' || target === 'all') {
-        // Get all visible repos (trending, leaderboard, tier 1 & 2)
-        const [trending, tier1, tier2] = await Promise.all([
-          storage.getHighGrowthRepos(30, 200),
+        // Get all visible repos with priority ordering
+        const [tier1, tier2, trending] = await Promise.all([
           storage.getReposByTier(1, 100),
-          storage.getReposByTier(2, 20),
+          storage.getReposByTier(2, 50),
+          storage.getHighGrowthRepos(30, 100),
         ]);
         
-        // Combine and deduplicate
-        const allRepos = [...trending, ...tier1, ...tier2];
+        // Priority order: Tier 1 first, then Tier 2, then trending
+        const allRepos = [...tier1, ...tier2, ...trending];
         const uniqueRepos = new Map();
-        allRepos.forEach(repo => uniqueRepos.set(repo.id, repo));
-        reposToAnalyze = Array.from(uniqueRepos.values());
+        allRepos.forEach(repo => {
+          if (!uniqueRepos.has(repo.id)) {
+            uniqueRepos.set(repo.id, { ...repo, priority: this.getRepoPriority(repo) });
+          }
+        });
+        reposToAnalyze = Array.from(uniqueRepos.values())
+          .sort((a, b) => a.priority - b.priority); // Lower number = higher priority
       } else if (target === 'tier1') {
-        reposToAnalyze = await storage.getReposByTier(1, 100);
+        const tier1Repos = await storage.getReposByTier(1, 100);
+        reposToAnalyze = tier1Repos.map(repo => ({ ...repo, priority: 1 }));
       } else if (target === 'tier2') {
-        reposToAnalyze = await storage.getReposByTier(2, 50);
+        const tier2Repos = await storage.getReposByTier(2, 50);
+        reposToAnalyze = tier2Repos.map(repo => ({ ...repo, priority: 2 }));
       }
       
       // Filter out repos that already have recent analysis
@@ -773,52 +782,225 @@ class WorkerService extends BaseService {
         }
       }
       
-      console.log(`Found ${reposNeedingAnalysis.length} repositories needing analysis`);
+      console.log(`Found ${reposNeedingAnalysis.length} repositories needing analysis (${reposToAnalyze.length} total)`);
       
-      // Queue analysis for these repositories
+      // Enhanced batch processing - process up to 30 repositories
+      const BATCH_SIZE = 30;
+      const DELAY_BETWEEN_ANALYSES = 2000; // 2 seconds instead of 5
+      const MAX_RETRIES = 2;
+      
       const id = this.env.GITHUB_AGENT.idFromName('main');
       const agent = this.env.GITHUB_AGENT.get(id);
       
-      // Start batch analysis in the background
-      const batchPromises = reposNeedingAnalysis.slice(0, 10).map(async (repo, index) => {
-        // Add delay to avoid rate limits
-        await new Promise(resolve => setTimeout(resolve, index * 5000));
-        
-        try {
-          const response = await agent.fetch(new Request('http://internal/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoId: repo.id,
-              force: true
-            })
-          }));
-          
-          if (response.ok) {
-            return { repo: repo.full_name, status: 'success' };
-          } else {
-            return { repo: repo.full_name, status: 'failed', error: await response.text() };
-          }
-        } catch (error) {
-          return { repo: repo.full_name, status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-      });
+      // Store batch progress in Durable Object state for tracking
+      const batchId = `batch_${Date.now()}`;
       
-      // Don't wait for all analyses to complete - just start them
-      Promise.all(batchPromises).then(results => {
-        console.log('Batch analysis completed:', results);
-      }).catch(error => {
-        console.error('Batch analysis error:', error);
-      });
+      // Start batch analysis using the Durable Object's batch processing
+      const repositoryNames = reposNeedingAnalysis.slice(0, BATCH_SIZE).map(r => r.full_name);
+      
+      // Call the Durable Object's startBatchAnalysis method
+      const startBatchResponse = await agent.fetch(new Request('http://internal/batch/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId,
+          repositories: repositoryNames
+        })
+      }));
+      
+      if (!startBatchResponse.ok) {
+        const error = await startBatchResponse.text();
+        console.error(`[${batchId}] Failed to start batch analysis:`, error);
+      } else {
+        console.log(`[${batchId}] Batch analysis started successfully`);
+      }
       
       return this.jsonResponse({
-        message: 'Batch analysis started',
+        message: 'Enhanced batch analysis started',
+        batchId,
         target,
         totalRepos: reposToAnalyze.length,
         needingAnalysis: reposNeedingAnalysis.length,
-        queued: Math.min(10, reposNeedingAnalysis.length),
-        repositories: reposNeedingAnalysis.slice(0, 10).map(r => r.full_name)
+        queued: Math.min(BATCH_SIZE, reposNeedingAnalysis.length),
+        batchSize: BATCH_SIZE,
+        delayBetweenAnalyses: `${DELAY_BETWEEN_ANALYSES / 1000}s`,
+        maxRetries: MAX_RETRIES,
+        estimatedCompletionTime: `${Math.round((BATCH_SIZE * DELAY_BETWEEN_ANALYSES) / 1000 / 60)} minutes`,
+        repositories: reposNeedingAnalysis.slice(0, BATCH_SIZE).map(r => ({
+          name: r.full_name,
+          priority: r.priority,
+          tier: r.tier
+        }))
       });
-    }, 'batch analyze repositories');
+    }, 'enhanced batch analyze repositories');
+  }
+
+  /**
+   * Get repository priority for batch analysis (lower number = higher priority)
+   */
+  private getRepoPriority(repo: any): number {
+    if (repo.tier === 1) return 1;
+    if (repo.tier === 2) return 2;
+    if (repo.stars > 10000) return 3;
+    if (repo.stars > 1000) return 4;
+    return 5;
+  }
+
+  /**
+   * Handle batch analysis status request
+   */
+  private async handleBatchStatus(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const batchId = url.searchParams.get('batchId');
+      
+      if (!batchId) {
+        return this.jsonResponse({ error: 'batchId parameter required' }, 400);
+      }
+      
+      // Forward to Durable Object to get batch status
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      const statusResponse = await agent.fetch(new Request('http://internal/batch/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId })
+      }));
+      
+      if (!statusResponse.ok) {
+        const error = await statusResponse.text();
+        return this.jsonResponse({ 
+          error: 'Failed to get batch status', 
+          details: error 
+        }, statusResponse.status);
+      }
+      
+      const statusData = await statusResponse.json() as any;
+      return this.jsonResponse(statusData);
+    }, 'get batch analysis status');
+  }
+
+  /**
+   * Handle analysis statistics request - provides global analysis progress
+   */
+  private async handleAnalysisStats(): Promise<Response> {
+    return this.handleError(async () => {
+      const { StorageService } = await import('./services/storage');
+      const storage = new StorageService(this.env);
+      
+      // Get tier counts from repo_tiers table
+      const tierCounts = await Promise.all([
+        this.env.DB.prepare('SELECT COUNT(*) as count FROM repo_tiers WHERE tier = 1').first(),
+        this.env.DB.prepare('SELECT COUNT(*) as count FROM repo_tiers WHERE tier = 2').first(),
+        this.env.DB.prepare('SELECT COUNT(*) as count FROM repo_tiers WHERE tier = 3').first()
+      ]);
+      
+      const tier1Count = (tierCounts[0] as any)?.count || 0;
+      const tier2Count = (tierCounts[1] as any)?.count || 0;
+      const tier3Count = (tierCounts[2] as any)?.count || 0;
+      
+      // Count analyzed repositories (those with recent analysis)
+      const analyzedCounts = await Promise.all([
+        this.env.DB.prepare(`
+          SELECT COUNT(DISTINCT rt.repo_id) as count 
+          FROM repo_tiers rt 
+          JOIN analyses a ON rt.repo_id = a.repo_id 
+          WHERE rt.tier = 1 AND a.created_at > datetime('now', '-30 days')
+        `).first(),
+        this.env.DB.prepare(`
+          SELECT COUNT(DISTINCT rt.repo_id) as count 
+          FROM repo_tiers rt 
+          JOIN analyses a ON rt.repo_id = a.repo_id 
+          WHERE rt.tier = 2 AND a.created_at > datetime('now', '-30 days')
+        `).first(),
+        this.env.DB.prepare(`
+          SELECT COUNT(DISTINCT rt.repo_id) as count 
+          FROM repo_tiers rt 
+          JOIN analyses a ON rt.repo_id = a.repo_id 
+          WHERE rt.tier = 3 AND a.created_at > datetime('now', '-30 days')
+        `).first()
+      ]);
+      
+      const tier1Analyzed = (analyzedCounts[0] as any)?.count || 0;
+      const tier2Analyzed = (analyzedCounts[1] as any)?.count || 0;
+      const tier3Analyzed = (analyzedCounts[2] as any)?.count || 0;
+      
+      const totalRepositories = tier1Count + tier2Count + tier3Count;
+      const totalAnalyzed = tier1Analyzed + tier2Analyzed + tier3Analyzed;
+      const remainingRepositories = totalRepositories - totalAnalyzed;
+      const analysisProgress = totalRepositories > 0 ? (totalAnalyzed / totalRepositories) * 100 : 0;
+      
+      // Calculate estimated batches and time remaining
+      const BATCH_SIZE = 30;
+      const BATCH_TIME_MINUTES = 2; // Estimated 2 minutes per batch
+      const estimatedBatchesRemaining = Math.ceil(remainingRepositories / BATCH_SIZE);
+      const estimatedTimeRemaining = estimatedBatchesRemaining * BATCH_TIME_MINUTES;
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        totalRepositories,
+        analyzedRepositories: totalAnalyzed,
+        remainingRepositories,
+        analysisProgress: Math.round(analysisProgress * 100) / 100,
+        tierBreakdown: {
+          tier1: {
+            total: tier1Count,
+            analyzed: tier1Analyzed,
+            remaining: tier1Count - tier1Analyzed,
+            progress: tier1Count > 0 ? Math.round((tier1Analyzed / tier1Count) * 100) : 0
+          },
+          tier2: {
+            total: tier2Count,
+            analyzed: tier2Analyzed,
+            remaining: tier2Count - tier2Analyzed,
+            progress: tier2Count > 0 ? Math.round((tier2Analyzed / tier2Count) * 100) : 0
+          },
+          tier3: {
+            total: tier3Count,
+            analyzed: tier3Analyzed,
+            remaining: tier3Count - tier3Analyzed,
+            progress: tier3Count > 0 ? Math.round((tier3Analyzed / tier3Count) * 100) : 0
+          }
+        },
+        batchInfo: {
+          batchSize: BATCH_SIZE,
+          estimatedBatchesRemaining,
+          estimatedTimeRemaining: estimatedTimeRemaining > 60 ? 
+            `${Math.round(estimatedTimeRemaining / 60)} hours` : 
+            `${estimatedTimeRemaining} minutes`
+        },
+        recommendations: this.getAnalysisRecommendations(
+          tier1Count - tier1Analyzed,
+          tier2Count - tier2Analyzed,
+          tier3Count - tier3Analyzed
+        )
+      });
+    }, 'get analysis statistics');
+  }
+
+  /**
+   * Get smart recommendations based on analysis coverage
+   */
+  private getAnalysisRecommendations(tier1Remaining: number, tier2Remaining: number, tier3Remaining: number): string[] {
+    const recommendations = [];
+    
+    if (tier1Remaining > 0) {
+      recommendations.push(`Focus on Tier 1 first (${tier1Remaining} high-priority repos remaining)`);
+    }
+    
+    if (tier2Remaining > 10) {
+      recommendations.push(`Complete Tier 2 analysis (${tier2Remaining} repos remaining)`);
+    }
+    
+    if (tier3Remaining > 50) {
+      recommendations.push(`Consider background processing for Tier 3 (${tier3Remaining} repos remaining)`);
+    }
+    
+    if (tier1Remaining === 0 && tier2Remaining === 0) {
+      recommendations.push('Excellent! All high-priority repositories are analyzed');
+    }
+    
+    return recommendations;
   }
 }

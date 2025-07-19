@@ -17,10 +17,22 @@ export default function Analysis() {
       try {
         // First try to get existing analysis
         const result = await api.analyzeRepository(owner!, repo!, false);
-        return result;
+        
+        // Check if we got a valid analysis response
+        if (result && result.analysis) {
+          return result.analysis;
+        } else if (result && result.message === 'Using cached analysis') {
+          return result.analysis;
+        } else {
+          // No analysis found, trigger generation
+          throw new Error('No analysis found');
+        }
       } catch (error: any) {
-        // If no analysis exists, trigger generation
-        if (error.message?.includes('not found') || error.message?.includes('Failed to generate')) {
+        // Handle different error types
+        if (error.message?.includes('not found') || 
+            error.message?.includes('No analysis found') ||
+            error.message?.includes('Repository') && error.message?.includes('not found')) {
+          
           setIsGenerating(true);
           setGenerationMessage('No analysis found. Generating AI analysis...');
           
@@ -28,10 +40,17 @@ export default function Analysis() {
             // Force analysis generation
             const newAnalysis = await api.analyzeRepository(owner!, repo!, true);
             setIsGenerating(false);
-            return newAnalysis;
-          } catch (genError) {
+            
+            // Return the analysis from the response
+            if (newAnalysis && newAnalysis.analysis) {
+              return newAnalysis.analysis;
+            } else {
+              throw new Error('Failed to generate analysis');
+            }
+          } catch (genError: any) {
             setIsGenerating(false);
-            throw genError;
+            console.error('Analysis generation failed:', genError);
+            throw new Error(`Analysis generation failed: ${genError.message}`);
           }
         }
         throw error;
