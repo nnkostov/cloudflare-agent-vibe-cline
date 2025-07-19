@@ -219,21 +219,25 @@ class WorkerService extends BaseService {
           console.log(`Trending repos: Using ${hasHistoricalData ? 'historical growth data' : 'hybrid trending algorithm'}`);
           
           // Return all trending repositories (increased from 30 to show all)
-          const simplifiedRepos = repos.slice(0, 200).map(repo => ({
-            id: repo.id,
-            name: repo.name,
-            full_name: repo.full_name,
-            description: repo.description,
-            stars: repo.stars,
-            forks: repo.forks,
-            language: repo.language,
-            topics: repo.topics,
-            tier: repo.tier,
-            trending_score: repo.trending_score || repo.growth_percent || 0,
-            trending_reason: repo.trending_factors ? 
-              this.getTrendingReason(repo.trending_factors) : 
-              'High growth rate'
-          }));
+          // Include analysis data for each repository
+          const simplifiedRepos = await Promise.all(
+            repos.slice(0, 200).map(async (repo) => ({
+              id: repo.id,
+              name: repo.name,
+              full_name: repo.full_name,
+              description: repo.description,
+              stars: repo.stars,
+              forks: repo.forks,
+              language: repo.language,
+              topics: repo.topics,
+              tier: repo.tier,
+              trending_score: repo.trending_score || repo.growth_percent || 0,
+              trending_reason: repo.trending_factors ? 
+                this.getTrendingReason(repo.trending_factors) : 
+                'High growth rate',
+              latest_analysis: await storage.getLatestAnalysis(repo.id)
+            }))
+          );
           
           return this.jsonResponse({
             repositories: simplifiedRepos,
@@ -348,19 +352,51 @@ class WorkerService extends BaseService {
     return this.handleError(async () => {
       const url = new URL(request.url);
       const tier = parseInt(url.searchParams.get('tier') || '1');
+      const page = parseInt(url.searchParams.get('page') || '1');
+      const limit = parseInt(url.searchParams.get('limit') || '50');
       
       if (![1, 2, 3].includes(tier)) {
         return this.jsonResponse({ error: 'Invalid tier. Must be 1, 2, or 3' }, 400);
       }
       
+      if (page < 1) {
+        return this.jsonResponse({ error: 'Invalid page. Must be >= 1' }, 400);
+      }
+      
+      if (limit < 1 || limit > 100) {
+        return this.jsonResponse({ error: 'Invalid limit. Must be between 1 and 100' }, 400);
+      }
+      
       const { StorageUnifiedService } = await import('./services/storage-unified');
       const storage = new StorageUnifiedService(this.env);
-      const repos = await storage.getReposByTier(tier as 1 | 2 | 3);
+      
+      // Get total count for pagination info
+      const totalCount = await storage.getRepoCountByTier(tier as 1 | 2 | 3);
+      const totalPages = Math.ceil(totalCount / limit);
+      
+      // Calculate offset
+      const offset = (page - 1) * limit;
+      
+      // Get paginated repos
+      const repos = await storage.getReposByTierPaginated(tier as 1 | 2 | 3, limit, offset);
+      
+      // Always fetch full analysis data since we're dealing with manageable page sizes
+      const reposWithAnalysisInfo = await Promise.all(
+        repos.map(async (repo: any) => ({
+          ...repo,
+          latest_analysis: await storage.getLatestAnalysis(repo.id)
+        }))
+      );
       
       return this.jsonResponse({ 
         tier, 
-        count: repos.length, 
-        repos: repos // Return all repositories without limit
+        page,
+        limit,
+        totalCount,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+        repos: reposWithAnalysisInfo
       });
     }, 'get repos by tier');
   }

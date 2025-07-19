@@ -96,12 +96,17 @@ class ApiClient {
     }>('/repos/trending');
   }
 
-  getReposByTier = async (tier: 1 | 2 | 3) => {
+  getReposByTier = async (tier: 1 | 2 | 3, page: number = 1, limit: number = 50) => {
     return this.request<{
       tier: number;
-      count: number;
+      page: number;
+      limit: number;
+      totalCount: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
       repos: any[];
-    }>(`/repos/tier?tier=${tier}`);
+    }>(`/repos/tier?tier=${tier}&page=${page}&limit=${limit}`);
   }
 
   // Analysis

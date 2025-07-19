@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { TrendingUp, Star, GitFork, ExternalLink, FileText, Sparkles, Flame, Award, Rocket, BarChart3 } from 'lucide-react';
+import { TrendingUp, Star, GitFork, ExternalLink, FileText, Sparkles, Flame, Award, Rocket, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, formatNumber, getRecommendationBadge } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/Card';
 import { getTierBadge, getLanguageColor, truncateText } from '@/lib/utils';
 
 export default function Leaderboard() {
   const [selectedTier, setSelectedTier] = useState<1 | 2 | 3 | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
 
   const { data: trending, isLoading: trendingLoading } = useQuery({
     queryKey: ['trending'],
@@ -16,13 +18,19 @@ export default function Leaderboard() {
   });
 
   const { data: tierData, isLoading: tierLoading } = useQuery({
-    queryKey: ['tier', selectedTier],
-    queryFn: () => api.getReposByTier(selectedTier!),
+    queryKey: ['tier', selectedTier, currentPage],
+    queryFn: () => api.getReposByTier(selectedTier!, currentPage, pageSize),
     enabled: !!selectedTier,
   });
 
   const isLoading = trendingLoading || tierLoading;
   const repos = selectedTier ? tierData?.repos : trending?.repositories;
+
+  // Reset page when changing tiers
+  const handleTierChange = (tier: 1 | 2 | 3 | null) => {
+    setSelectedTier(tier);
+    setCurrentPage(1);
+  };
 
   // Get explanation content based on selected view
   const getExplanationCard = () => {
@@ -52,7 +60,7 @@ export default function Leaderboard() {
         </Card>
       );
     } else if (selectedTier === 1) {
-      const count = tierData?.count || repos?.length || 0;
+      const count = tierData?.totalCount || repos?.length || 0;
       return (
         <Card className="bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border-yellow-200 dark:border-yellow-800">
           <CardContent className="p-6">
@@ -76,7 +84,7 @@ export default function Leaderboard() {
         </Card>
       );
     } else if (selectedTier === 2) {
-      const count = tierData?.count || repos?.length || 0;
+      const count = tierData?.totalCount || repos?.length || 0;
       return (
         <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border-blue-200 dark:border-blue-800">
           <CardContent className="p-6">
@@ -100,7 +108,7 @@ export default function Leaderboard() {
         </Card>
       );
     } else if (selectedTier === 3) {
-      const count = tierData?.count || repos?.length || 0;
+      const count = tierData?.totalCount || repos?.length || 0;
       return (
         <Card className="bg-gradient-to-r from-gray-50 to-slate-50 dark:from-gray-900/20 dark:to-slate-900/20 border-gray-200 dark:border-gray-800">
           <CardContent className="p-6">
@@ -134,7 +142,7 @@ export default function Leaderboard() {
         {/* Tier Filter */}
         <div className="flex space-x-2">
           <button
-            onClick={() => setSelectedTier(null)}
+            onClick={() => handleTierChange(null)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               !selectedTier
                 ? 'bg-orange-600 text-white hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600'
@@ -159,7 +167,7 @@ export default function Leaderboard() {
             return (
               <button
                 key={tier}
-                onClick={() => setSelectedTier(tier as 1 | 2 | 3)}
+                onClick={() => handleTierChange(tier as 1 | 2 | 3)}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${colors[tier as keyof typeof colors]}`}
               >
                 Tier {tier}
@@ -271,16 +279,31 @@ export default function Leaderboard() {
                     <div className="flex flex-col space-y-2 ml-4">
                       {(() => {
                         const [owner, name] = repo.full_name.split('/');
-                        const hasAnalysis = !!analysis;
+                        // Handle different response formats:
+                        // - Small result sets: have `latest_analysis` object
+                        // - Large result sets: have `has_analysis` boolean
+                        let hasAnalysis = false;
+                        
+                        if (repo.latest_analysis !== undefined) {
+                          // Small result set - check if analysis exists
+                          hasAnalysis = !!repo.latest_analysis;
+                        } else if (repo.has_analysis !== undefined) {
+                          // Large result set - use the boolean flag
+                          hasAnalysis = repo.has_analysis;
+                        } else {
+                          // Fallback to checking the analysis variable
+                          hasAnalysis = !!analysis;
+                        }
                         
                         return (
                           <Link
                             to={`/analysis/${owner}/${name}`}
-                            className={`flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                            className={`flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all ${
                               hasAnalysis
-                                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                : 'bg-gray-600 text-white hover:bg-gray-700'
+                                ? 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600'
+                                : 'bg-green-600 text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 animate-pulse hover:animate-none'
                             }`}
+                            title={hasAnalysis ? 'View existing analysis' : 'Generate new AI analysis'}
                           >
                             {hasAnalysis ? (
                               <>
@@ -310,6 +333,46 @@ export default function Leaderboard() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {selectedTier && tierData && tierData.totalPages > 1 && (
+        <div className="flex items-center justify-center space-x-4 mt-6">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={!tierData.hasPreviousPage}
+            className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              tierData.hasPreviousPage
+                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                : 'bg-gray-50 text-gray-400 cursor-not-allowed dark:bg-gray-900 dark:text-gray-600'
+            }`}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </button>
+          
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {currentPage} of {tierData.totalPages}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              ({tierData.totalCount} total)
+            </span>
+          </div>
+          
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(tierData.totalPages, prev + 1))}
+            disabled={!tierData.hasNextPage}
+            className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              tierData.hasNextPage
+                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                : 'bg-gray-50 text-gray-400 cursor-not-allowed dark:bg-gray-900 dark:text-gray-600'
+            }`}
+          >
+            Next
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </button>
         </div>
       )}
     </div>

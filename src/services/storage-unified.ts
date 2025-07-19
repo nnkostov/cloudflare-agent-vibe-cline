@@ -368,6 +368,36 @@ export class StorageUnifiedService extends BaseService {
   }
 
   /**
+   * Get repository count by tier
+   */
+  async getRepoCountByTier(tier: 1 | 2 | 3): Promise<number> {
+    const result = await this.dbFirst<{ count: number }>(`
+      SELECT COUNT(*) as count 
+      FROM repositories r
+      INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+      WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+    `, tier);
+    
+    return result?.count || 0;
+  }
+
+  /**
+   * Get repositories by tier with pagination
+   */
+  async getReposByTierPaginated(tier: 1 | 2 | 3, limit: number, offset: number): Promise<any[]> {
+    const results = await this.dbAll<any>(`
+      SELECT r.*, rt.tier
+      FROM repositories r
+      INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+      WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+      ORDER BY r.stars DESC
+      LIMIT ? OFFSET ?
+    `, tier, limit, offset);
+    
+    return results.map(this.parseRepositoryWithTier);
+  }
+
+  /**
    * Bulk update repository metrics
    */
   async updateRepositoryMetricsBatch(updates: Array<{ repoId: string; stars: number; forks: number }>) {
