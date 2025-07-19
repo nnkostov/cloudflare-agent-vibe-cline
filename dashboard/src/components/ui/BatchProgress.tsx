@@ -111,7 +111,7 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
 
   const progressPercentage = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
   const elapsedTime = Math.round((Date.now() - progress.startTime) / 1000);
-  const estimatedTotal = progress.estimatedCompletion ? Math.round((progress.estimatedCompletion - progress.startTime) / 1000) : null;
+  // const estimatedTotal = progress.estimatedCompletion ? Math.round((progress.estimatedCompletion - progress.startTime) / 1000) : null;
 
   return (
     <div className="space-y-4">

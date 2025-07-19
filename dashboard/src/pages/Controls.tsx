@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BatchProgress } from '@/components/ui/BatchProgress';
 import NeuralActivityCenter from '@/components/controls/NeuralActivityCenter';
+import { getDisplayVersion } from '@/lib/version';
 
 export default function Controls() {
   const queryClient = useQueryClient();
@@ -741,7 +742,7 @@ export default function Controls() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Version</p>
-              <p className="text-lg font-medium text-gray-900 dark:text-white">v3.2.0</p>
+              <p className="text-lg font-medium text-gray-900 dark:text-white">{getDisplayVersion()}</p>
             </div>
           </div>
         </CardContent>

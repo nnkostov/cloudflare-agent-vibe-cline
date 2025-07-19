@@ -179,6 +179,7 @@ class WorkerService extends BaseService {
       '/analyze/batch/status': () => this.handleBatchStatus(request),
       '/analysis/stats': () => this.handleAnalysisStats(),
       '/worker-metrics': () => this.handleWorkerMetrics(),
+      '/version': () => this.handleVersion(),
     };
 
     const handler = directHandlers[agentPath];
@@ -1451,5 +1452,26 @@ class WorkerService extends BaseService {
     const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
     const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
     return squaredDiffs.reduce((sum, diff) => sum + diff, 0) / values.length;
+  }
+
+  /**
+   * Handle version endpoint - returns current application version
+   */
+  private async handleVersion(): Promise<Response> {
+    return this.handleError(async () => {
+      // Version will be injected at build time or read from environment
+      const version = '2.0.1'; // This will be updated by the auto-versioning system
+      const buildTimestamp = new Date().toISOString();
+      const gitCommit = 'unknown'; // Could be injected at build time
+      
+      return this.jsonResponse({
+        version,
+        buildTimestamp,
+        gitCommit,
+        formatted: `v${version}`,
+        environment: this.env.ENVIRONMENT || 'production',
+        timestamp: new Date().toISOString()
+      });
+    }, 'get version information');
   }
 }
