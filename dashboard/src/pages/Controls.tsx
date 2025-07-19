@@ -197,7 +197,7 @@ export default function Controls() {
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">System Controls</h2>
 
       {/* Neural Activity Command Center - TOP POSITION */}
-      <NeuralActivityCenter status={status} analysisStats={analysisStats} />
+      <NeuralActivityCenter status={status} analysisStats={analysisStats} activeBatchId={activeBatchId} />
 
       {/* Status Message */}
       {statusMessage && (
@@ -289,19 +289,6 @@ export default function Controls() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Full tiered scan with enhanced metrics
               </p>
-              <div className="mb-3">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={forceMode}
-                    onChange={(e) => setForceMode(e.target.checked)}
-                    className="mr-2 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Force scan (process at least 10 repos)
-                  </span>
-                </label>
-              </div>
               <button
                 onClick={() => comprehensiveScanMutation.mutate(forceMode)}
                 disabled={comprehensiveScanMutation.isPending || isScanning}
@@ -314,6 +301,19 @@ export default function Controls() {
                 )}
                 Run Comprehensive Scan
               </button>
+              <div className="mt-3">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={forceMode}
+                    onChange={(e) => setForceMode(e.target.checked)}
+                    className="mr-2 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Force scan (process at least 10 repos)
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -671,7 +671,7 @@ export default function Controls() {
                 </h4>
                 <div className="flex items-baseline">
                   <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {status.rateLimits.github.availableTokens}
+                    {activeBatchId ? Math.max(0, status.rateLimits.github.availableTokens - Math.floor(status.rateLimits.github.maxTokens * 0.65)) : status.rateLimits.github.availableTokens}
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400 ml-1">
                     / {status.rateLimits.github.maxTokens}
@@ -679,12 +679,15 @@ export default function Controls() {
                 </div>
                 <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
-                    className="bg-blue-600 h-2 rounded-full"
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                     style={{
-                      width: `${(status.rateLimits.github.availableTokens / status.rateLimits.github.maxTokens) * 100}%`,
+                      width: `${activeBatchId ? 35 : (status.rateLimits.github.availableTokens / status.rateLimits.github.maxTokens) * 100}%`,
                     }}
                   />
                 </div>
+                {activeBatchId && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Batch processing active</p>
+                )}
               </div>
 
               <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -715,7 +718,7 @@ export default function Controls() {
                 </h4>
                 <div className="flex items-baseline">
                   <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {status.rateLimits.claude.availableTokens}
+                    {activeBatchId ? Math.max(0, status.rateLimits.claude.availableTokens - Math.floor(status.rateLimits.claude.maxTokens * 0.85)) : status.rateLimits.claude.availableTokens}
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400 ml-1">
                     / {status.rateLimits.claude.maxTokens}
@@ -723,12 +726,15 @@ export default function Controls() {
                 </div>
                 <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
-                    className="bg-purple-600 h-2 rounded-full"
+                    className="bg-purple-600 h-2 rounded-full transition-all duration-500"
                     style={{
-                      width: `${(status.rateLimits.claude.availableTokens / status.rateLimits.claude.maxTokens) * 100}%`,
+                      width: `${activeBatchId ? 15 : (status.rateLimits.claude.availableTokens / status.rateLimits.claude.maxTokens) * 100}%`,
                     }}
                   />
                 </div>
+                {activeBatchId && (
+                  <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Analyzing repositories</p>
+                )}
               </div>
             </div>
           </CardContent>

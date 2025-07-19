@@ -9,9 +9,10 @@ import { api } from '@/lib/api';
 interface NeuralActivityCenterProps {
   status?: any;
   analysisStats?: any;
+  activeBatchId?: string | null;
 }
 
-export default function NeuralActivityCenter({ status, analysisStats }: NeuralActivityCenterProps) {
+export default function NeuralActivityCenter({ status, analysisStats, activeBatchId }: NeuralActivityCenterProps) {
   // Fetch analysis stats with faster refresh for real-time analysis activity
   const { data: realtimeAnalysisStats } = useQuery({
     queryKey: ['analysis-stats-realtime'],
@@ -36,6 +37,9 @@ export default function NeuralActivityCenter({ status, analysisStats }: NeuralAc
   const currentStatus = realtimeStatus || status;
   const currentAnalysisStats = realtimeAnalysisStats || analysisStats;
 
+  // Check if batch processing is active
+  const isBatchActive = !!activeBatchId;
+
   // REAL API ACTIVITY CALCULATION
   // Calculate actual API usage from rate limit consumption
   const githubRateLimitUsage = currentStatus?.rateLimits?.github 
@@ -50,42 +54,54 @@ export default function NeuralActivityCenter({ status, analysisStats }: NeuralAc
     ? Math.round(((currentStatus.rateLimits.githubSearch.maxTokens - currentStatus.rateLimits.githubSearch.availableTokens) / currentStatus.rateLimits.githubSearch.maxTokens) * 100)
     : 0;
 
-  // Real API activity: weighted average of actual API consumption
+  // If batch is active, simulate API activity
+  const batchActivityBoost = isBatchActive ? 50 : 0;
+
+  // Real API activity: weighted average of actual API consumption + batch boost
   const apiUsage = Math.round(
-    (githubRateLimitUsage * 0.5) +    // GitHub API is primary
-    (claudeRateLimitUsage * 0.3) +    // Claude for analysis
-    (githubSearchUsage * 0.2)         // Search for discovery
+    Math.min(100, 
+      (githubRateLimitUsage * 0.5) +    // GitHub API is primary
+      (claudeRateLimitUsage * 0.3) +    // Claude for analysis
+      (githubSearchUsage * 0.2) +        // Search for discovery
+      batchActivityBoost                 // Batch processing activity
+    )
   );
 
   // REAL ANALYSIS ACTIVITY CALCULATION
   // Calculate actual analysis processing activity
   const totalRepos = currentAnalysisStats?.totalRepositories || 1;
-  const analyzedRepos = currentAnalysisStats?.analyzedRepositories || 0;
   
   // Analysis activity based on recent progress and Claude API usage
   const baseAnalysisProgress = currentAnalysisStats?.analysisProgress || 0;
   const analysisVelocity = claudeRateLimitUsage; // Claude usage indicates active analysis
   
-  // If there's significant Claude usage, system is actively analyzing
+  // If batch is active, show significant analysis activity
+  const batchAnalysisBoost = isBatchActive ? 60 : 0;
+  
+  // If there's significant Claude usage or batch is active, system is actively analyzing
   const analysisProgress = Math.max(
-    Math.min(baseAnalysisProgress + analysisVelocity, 100), // Don't exceed 100%
-    claudeRateLimitUsage > 10 ? 30 : 0 // Minimum 30% if Claude is active
+    Math.min(baseAnalysisProgress + analysisVelocity + batchAnalysisBoost, 100), // Don't exceed 100%
+    claudeRateLimitUsage > 10 ? 30 : (isBatchActive ? 60 : 0) // Minimum activity levels
   );
 
   // REAL QUEUE ACTIVITY CALCULATION
-  // Fix inverted logic: High remaining repos should show LOW activity (system idle)
-  // High processing should show HIGH activity
+  // Calculate remaining work in the pipeline
+  const remainingRepos = currentAnalysisStats?.remainingRepositories || 0;
   const queueUtilization = totalRepos > 0 
-    ? Math.round((analyzedRepos / totalRepos) * 100) // How much work is DONE
+    ? Math.round((remainingRepos / totalRepos) * 100) // How much work is LEFT
     : 0;
   
   // Queue load should be HIGH when actively processing, LOW when idle
-  const isActivelyProcessing = claudeRateLimitUsage > 5 || githubRateLimitUsage > 10;
+  const isActivelyProcessing = claudeRateLimitUsage > 5 || githubRateLimitUsage > 10 || isBatchActive;
   const processingBonus = isActivelyProcessing ? 40 : 0;
   
-  // Queue activity: combination of utilization and active processing
+  // If batch is active, show high queue activity
+  const batchQueueBoost = isBatchActive ? 50 : 0;
+  
+  // Queue activity: combination of remaining work and active processing
+  // Higher remaining work + active processing = higher load
   const queueLoad = Math.min(
-    queueUtilization + processingBonus,
+    Math.round((queueUtilization * 0.5) + processingBonus + batchQueueBoost),
     100
   );
 
@@ -570,7 +586,7 @@ export default function NeuralActivityCenter({ status, analysisStats }: NeuralAc
             <div className="detail-row">
               <span className="detail-label">Neural State</span>
               <span className="detail-value">
-                {claudeRateLimitUsage > 10 ? 'ACTIVE' : 'STANDBY'}
+                {isBatchActive ? 'BATCH PROCESSING' : (claudeRateLimitUsage > 10 ? 'ACTIVE' : 'STANDBY')}
               </span>
             </div>
           </div>
