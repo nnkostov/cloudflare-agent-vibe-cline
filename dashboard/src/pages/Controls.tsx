@@ -10,7 +10,7 @@ export default function Controls() {
   const queryClient = useQueryClient();
   const [isScanning, setIsScanning] = useState(false);
   const [forceMode, setForceMode] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
 
   const { data: status, error: statusError } = useQuery({
@@ -108,19 +108,31 @@ export default function Controls() {
   });
 
   const batchAnalysisMutation = useMutation({
-    mutationFn: api.triggerBatchAnalysis,
+    mutationFn: (target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible') => 
+      api.triggerBatchAnalysis(target, forceMode),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['trending'] });
       
-      // Set active batch ID for progress tracking
-      if (data.batchId) {
-        setActiveBatchId(data.batchId);
+      // Handle case where no repositories need analysis
+      if (!data.batchId) {
+        setStatusMessage({
+          type: 'info',
+          message: data.reason || 'No repositories need analysis at this time'
+        });
+        
+        // Show detailed analysis stats if available
+        if (data.analysisStats) {
+          console.log('Analysis Coverage:', data.analysisStats);
+        }
+        
+        return;
       }
       
+      // Set active batch ID for progress tracking
+      setActiveBatchId(data.batchId);
+      
       // Enhanced success message with more details
-      const message = data.batchId 
-        ? `Enhanced batch analysis started! Processing ${data.queued} repositories (${data.batchSize} max batch size, ${data.delayBetweenAnalyses} delays, ${data.maxRetries} max retries). Estimated completion: ${data.estimatedCompletionTime}.`
-        : `Batch analysis started! Queued ${data.queued} repositories for analysis.`;
+      const message = `Enhanced batch analysis started! Processing ${data.queued} repositories (${data.batchSize} max batch size, ${data.delayBetweenAnalyses} delays, ${data.maxRetries} max retries). Estimated completion: ${data.estimatedCompletionTime}.`;
       
       setStatusMessage({
         type: 'success',
@@ -128,16 +140,14 @@ export default function Controls() {
       });
       
       // Log detailed information for debugging
-      if (data.batchId) {
-        console.log('Enhanced Batch Analysis Details:', {
-          batchId: data.batchId,
-          target: data.target,
-          totalRepos: data.totalRepos,
-          needingAnalysis: data.needingAnalysis,
-          queued: data.queued,
-          repositories: data.repositories
-        });
-      }
+      console.log('Enhanced Batch Analysis Details:', {
+        batchId: data.batchId,
+        target: data.target,
+        totalRepos: data.totalRepos,
+        needingAnalysis: data.needingAnalysis,
+        queued: data.queued,
+        repositories: data.repositories
+      });
     },
     onError: (error) => {
       setStatusMessage({
@@ -179,10 +189,14 @@ export default function Controls() {
         <div className={`p-4 rounded-lg flex items-center ${
           statusMessage.type === 'success' 
             ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200' 
+            : statusMessage.type === 'info'
+            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
             : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200'
         }`}>
           {statusMessage.type === 'success' ? (
             <CheckCircle className="h-5 w-5 mr-2" />
+          ) : statusMessage.type === 'info' ? (
+            <AlertCircle className="h-5 w-5 mr-2" />
           ) : (
             <AlertCircle className="h-5 w-5 mr-2" />
           )}

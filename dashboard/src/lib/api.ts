@@ -182,10 +182,10 @@ class ApiClient {
   }
 
   // Batch analysis
-  triggerBatchAnalysis = async (target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible') => {
+  triggerBatchAnalysis = async (target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible', force: boolean = false) => {
     return this.request<{
       message: string;
-      batchId?: string;
+      batchId?: string | null;
       target: string;
       totalRepos: number;
       needingAnalysis: number;
@@ -194,6 +194,14 @@ class ApiClient {
       delayBetweenAnalyses?: string;
       maxRetries?: number;
       estimatedCompletionTime?: string;
+      reason?: string;
+      suggestion?: string;
+      analysisStats?: {
+        tier1: string;
+        tier2: string;
+        tier3: string;
+        totalRemaining: number;
+      };
       repositories: Array<{
         name: string;
         priority?: number;
@@ -201,7 +209,7 @@ class ApiClient {
       }> | string[];
     }>('/analyze/batch', {
       method: 'POST',
-      body: JSON.stringify({ target }),
+      body: JSON.stringify({ target, force }),
     });
   }
 

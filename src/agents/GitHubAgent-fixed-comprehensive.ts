@@ -812,7 +812,7 @@ export class GitHubAgent {
       total: repositories.length,
       completed: 0,
       failed: 0,
-      currentRepository: null,
+      currentRepository: repositories.length > 0 ? repositories[0] : null,
       startTime: Date.now(),
       estimatedCompletion: null,
       repositories,
@@ -836,6 +836,7 @@ export class GitHubAgent {
     const { batchId, repositories } = batchProgress;
     const DELAY_BETWEEN_ANALYSES = 2000; // 2 seconds
     const MAX_RETRIES = 2;
+    const ANALYSIS_TIMEOUT = 120000; // 2 minutes per repository
     
     console.log(`[${batchId}] Starting batch analysis of ${repositories.length} repositories`);
     
@@ -879,7 +880,13 @@ export class GitHubAgent {
         
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            const analysis = await this.analyzeRepository(repo, true);
+            // Add timeout protection
+            const analysisPromise = this.analyzeRepository(repo, true);
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Analysis timeout')), ANALYSIS_TIMEOUT)
+            );
+            
+            const analysis = await Promise.race([analysisPromise, timeoutPromise]);
             if (analysis) {
               batchProgress.completed++;
               batchProgress.results.push({

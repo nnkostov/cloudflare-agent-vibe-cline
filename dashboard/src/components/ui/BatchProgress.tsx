@@ -225,7 +225,11 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
         </div>
 
         {/* Current Repository */}
-        {progress.currentRepository && (
+        {progress.currentRepository && 
+         typeof progress.currentRepository === 'string' && 
+         progress.currentRepository.trim() !== '' && 
+         progress.currentRepository !== '0' &&
+         !progress.currentRepository.match(/^\d+$/) && (
           <div className="flex items-center space-x-2 text-sm mt-3">
             <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <span className="text-gray-600 dark:text-gray-400">Currently analyzing:</span>
@@ -234,9 +238,24 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
         )}
 
         {/* Estimated Completion */}
-        {estimatedTotal && status === 'running' && (
+        {status === 'running' && progress.completed > 0 && (
           <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-            <span>Estimated completion: {Math.max(0, estimatedTotal - elapsedTime)}s remaining</span>
+            {(() => {
+              const avgTimePerRepo = elapsedTime / progress.completed;
+              const estimatedTotalTime = avgTimePerRepo * progress.total;
+              const remainingTime = Math.max(0, estimatedTotalTime - elapsedTime);
+              const remainingMinutes = Math.round(remainingTime / 60);
+              
+              if (remainingMinutes > 60) {
+                const hours = Math.floor(remainingMinutes / 60);
+                const mins = remainingMinutes % 60;
+                return <span>Estimated completion: {hours}h {mins}m remaining</span>;
+              } else if (remainingMinutes > 0) {
+                return <span>Estimated completion: {remainingMinutes}m remaining</span>;
+              } else {
+                return <span>Estimated completion: Less than 1m remaining</span>;
+              }
+            })()}
           </div>
         )}
       </div>
