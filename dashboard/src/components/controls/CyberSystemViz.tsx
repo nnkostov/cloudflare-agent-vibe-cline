@@ -214,7 +214,8 @@ export default function CyberSystemViz({ status, analysisStats }: CyberSystemViz
         
         .metric-value {
           color: #10b981;
-          font-weight: 600;
+          font-weight: 500;
+          font-size: 0.65rem;
         }
         
         .energy-ring {

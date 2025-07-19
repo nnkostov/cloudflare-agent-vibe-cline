@@ -3,13 +3,14 @@ import { QueryClient } from '@tanstack/react-query';
 // API base URL - always use relative paths since we're serving from the same origin
 const API_BASE_URL = '/api';
 
-// Query client configuration
+// Query client configuration with faster defaults for real-time feel
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30 * 1000, // 30 seconds
-      refetchInterval: 60 * 1000, // 1 minute
-      retry: 3,
+      staleTime: 5 * 1000, // 5 seconds - consider data stale faster
+      refetchInterval: 10 * 1000, // 10 seconds default refresh
+      refetchIntervalInBackground: true, // Keep refreshing in background
+      retry: 2, // Reduce retries for faster response
     },
   },
 });

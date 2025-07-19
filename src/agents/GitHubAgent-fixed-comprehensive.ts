@@ -119,20 +119,266 @@ export class GitHubAgent {
   }
 
   /**
-   * Handle scheduled alarm
+   * Handle scheduled alarm with schedule detection
    */
   async alarm(): Promise<void> {
-    console.log('Running comprehensive scheduled scan...');
+    const scheduleType = this.detectScheduleType();
+    console.log(`Running scheduled ${scheduleType} operation...`);
     
     try {
-      await this.comprehensiveScan();
+      if (scheduleType === 'daily') {
+        await this.runDailyComprehensiveSweep();
+      } else {
+        // Hourly: Comprehensive scan + Batch analysis
+        await this.runHourlyOperations();
+      }
     } catch (error) {
-      console.error('Error in scheduled scan:', error);
+      console.error(`Error in scheduled ${scheduleType} operation:`, error);
     }
     
     // Schedule next run
     const nextRun = Date.now() + Config.github.scanInterval * 60 * 60 * 1000;
     await this.state.storage.setAlarm(nextRun);
+  }
+
+  /**
+   * Detect which schedule triggered this alarm
+   */
+  private detectScheduleType(): 'hourly' | 'daily' {
+    const now = new Date();
+    const hour = now.getHours();
+    
+    // Daily comprehensive sweep at 2 AM
+    if (hour === 2) {
+      return 'daily';
+    }
+    
+    // All other hours are hourly operations
+    return 'hourly';
+  }
+
+  /**
+   * Run hourly operations: Comprehensive scan + Batch analysis
+   */
+  private async runHourlyOperations(): Promise<void> {
+    console.log('Starting hourly operations: Comprehensive scan + Batch analysis');
+    const startTime = Date.now();
+    const MAX_RUNTIME = 300000; // 5 minutes
+    
+    try {
+      // Phase 1: Run comprehensive scan (0-3 minutes)
+      console.log('Phase 1: Running comprehensive scan...');
+      const comprehensiveResult = await this.comprehensiveScan(false, 10);
+      const phase1Duration = Date.now() - startTime;
+      
+      console.log(`Phase 1 completed in ${Math.round(phase1Duration / 1000)}s:`, comprehensiveResult);
+      
+      // Phase 2: Run batch analysis if time permits (3-5 minutes)
+      const remainingTime = MAX_RUNTIME - phase1Duration;
+      if (remainingTime > 30000) { // At least 30 seconds remaining
+        console.log(`Phase 2: Running batch analysis with ${Math.round(remainingTime / 1000)}s remaining...`);
+        const batchResult = await this.runHourlyBatchAnalysis(remainingTime);
+        
+        console.log(`Phase 2 completed: ${batchResult} additional repositories analyzed`);
+      } else {
+        console.log('Phase 2 skipped: Insufficient time remaining');
+      }
+      
+      const totalDuration = Date.now() - startTime;
+      console.log(`Hourly operations completed in ${Math.round(totalDuration / 1000)}s`);
+      
+    } catch (error) {
+      console.error('Error in hourly operations:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Run daily comprehensive sweep: Full coverage analysis
+   */
+  private async runDailyComprehensiveSweep(): Promise<void> {
+    console.log('Starting daily comprehensive sweep: Full coverage analysis');
+    const startTime = Date.now();
+    
+    try {
+      // Run comprehensive scan in force mode with higher targets
+      const result = await this.comprehensiveScan(true, 50);
+      
+      // Run additional batch analysis for complete coverage
+      const remainingTime = 300000 - (Date.now() - startTime);
+      if (remainingTime > 30000) {
+        const batchResult = await this.runComprehensiveBatchAnalysis(remainingTime);
+        console.log(`Daily sweep batch analysis: ${batchResult} additional repositories analyzed`);
+      }
+      
+      const totalDuration = Date.now() - startTime;
+      console.log(`Daily comprehensive sweep completed in ${Math.round(totalDuration / 1000)}s:`, result);
+      
+    } catch (error) {
+      console.error('Error in daily comprehensive sweep:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Run hourly batch analysis for unanalyzed repositories
+   */
+  private async runHourlyBatchAnalysis(maxRuntime: number): Promise<number> {
+    console.log(`Starting hourly batch analysis with ${Math.round(maxRuntime / 1000)}s available`);
+    const startTime = Date.now();
+    let analyzed = 0;
+    
+    try {
+      // Get repositories needing analysis, prioritized by staleness
+      const unanalyzedRepos = await this.getRepositoriesNeedingAnalysis(25); // Target 25 repos per hour
+      
+      if (unanalyzedRepos.length === 0) {
+        console.log('No repositories need analysis at this time');
+        return 0;
+      }
+      
+      console.log(`Found ${unanalyzedRepos.length} repositories needing analysis`);
+      
+      // Process repositories with time management
+      for (const repo of unanalyzedRepos) {
+        if (Date.now() - startTime > maxRuntime - 10000) { // Leave 10s buffer
+          console.log('Hourly batch analysis time limit reached');
+          break;
+        }
+        
+        try {
+          console.log(`Batch analyzing: ${repo.full_name}`);
+          const analysis = await this.analyzeRepository(repo, true);
+          
+          if (analysis) {
+            analyzed++;
+            console.log(`✅ Batch analyzed: ${repo.full_name}`);
+          }
+          
+          // Rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`❌ Failed to batch analyze ${repo.full_name}:`, error);
+        }
+      }
+      
+      const duration = Date.now() - startTime;
+      console.log(`Hourly batch analysis completed: ${analyzed} repositories analyzed in ${Math.round(duration / 1000)}s`);
+      
+      return analyzed;
+      
+    } catch (error) {
+      console.error('Error in hourly batch analysis:', error);
+      return analyzed;
+    }
+  }
+
+  /**
+   * Run comprehensive batch analysis for daily sweep
+   */
+  private async runComprehensiveBatchAnalysis(maxRuntime: number): Promise<number> {
+    console.log(`Starting comprehensive batch analysis with ${Math.round(maxRuntime / 1000)}s available`);
+    const startTime = Date.now();
+    let analyzed = 0;
+    
+    try {
+      // Get all repositories needing analysis for complete coverage
+      const unanalyzedRepos = await this.getRepositoriesNeedingAnalysis(100); // Target 100 repos for daily sweep
+      
+      if (unanalyzedRepos.length === 0) {
+        console.log('All repositories have recent analysis');
+        return 0;
+      }
+      
+      console.log(`Found ${unanalyzedRepos.length} repositories needing analysis for daily sweep`);
+      
+      // Process repositories with time management
+      for (const repo of unanalyzedRepos) {
+        if (Date.now() - startTime > maxRuntime - 10000) { // Leave 10s buffer
+          console.log('Daily batch analysis time limit reached');
+          break;
+        }
+        
+        try {
+          console.log(`Daily batch analyzing: ${repo.full_name}`);
+          const analysis = await this.analyzeRepository(repo, true);
+          
+          if (analysis) {
+            analyzed++;
+            console.log(`✅ Daily batch analyzed: ${repo.full_name}`);
+          }
+          
+          // Rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`❌ Failed to daily batch analyze ${repo.full_name}:`, error);
+        }
+      }
+      
+      const duration = Date.now() - startTime;
+      console.log(`Daily batch analysis completed: ${analyzed} repositories analyzed in ${Math.round(duration / 1000)}s`);
+      
+      return analyzed;
+      
+    } catch (error) {
+      console.error('Error in comprehensive batch analysis:', error);
+      return analyzed;
+    }
+  }
+
+  /**
+   * Get repositories that need analysis, prioritized by staleness
+   */
+  private async getRepositoriesNeedingAnalysis(limit: number): Promise<Repository[]> {
+    try {
+      // Query for repositories without recent analysis, ordered by staleness
+      const query = `
+        SELECT r.* FROM repositories r
+        LEFT JOIN repo_tiers rt ON r.id = rt.repo_id
+        LEFT JOIN analyses a ON r.id = a.repo_id AND a.created_at > datetime('now', '-7 days')
+        WHERE a.id IS NULL
+        AND rt.tier IS NOT NULL
+        ORDER BY 
+          rt.tier ASC,  -- Prioritize higher tiers
+          r.stars DESC, -- Then by popularity
+          r.updated_at DESC -- Then by recent activity
+        LIMIT ?
+      `;
+      
+      const results = await this.env.DB.prepare(query).bind(limit).all();
+      
+      if (!results.results || results.results.length === 0) {
+        return [];
+      }
+      
+      // Convert database results to Repository objects
+      return results.results.map((result: any) => ({
+        id: String(result.id),
+        name: String(result.name),
+        owner: String(result.owner),
+        full_name: String(result.full_name),
+        description: String(result.description || ''),
+        stars: Number(result.stars || 0),
+        forks: Number(result.forks || 0),
+        open_issues: Number(result.open_issues || 0),
+        language: String(result.language || ''),
+        topics: Array.isArray(result.topics) ? result.topics : JSON.parse(String(result.topics || '[]')),
+        created_at: String(result.created_at),
+        updated_at: String(result.updated_at),
+        pushed_at: String(result.pushed_at),
+        is_archived: Boolean(result.is_archived),
+        is_fork: Boolean(result.is_fork),
+        html_url: String(result.html_url || ''),
+        clone_url: String(result.clone_url || ''),
+        default_branch: String(result.default_branch || 'main'),
+      })) as Repository[];
+      
+    } catch (error) {
+      console.error('Error getting repositories needing analysis:', error);
+      return [];
+    }
   }
 
   /**
@@ -740,17 +986,17 @@ export class GitHubAgent {
   }
 
   /**
-   * Comprehensive repository scanning with tiered approach
+   * Comprehensive repository scanning with tiered approach - Optimized for Paid Cloudflare Plan
    */
   private async comprehensiveScan(force: boolean = false, minRepos: number = 10): Promise<{ processed: number, analyzed: number, discovered: number }> {
-    this.log(`Starting comprehensive repository scan... Force: ${force}, Min repos: ${minRepos}`);
+    this.log(`Starting comprehensive repository scan (Paid Plan Optimized)... Force: ${force}, Min repos: ${minRepos}`);
     
     if (this.scanProgress) {
       this.scanProgress.phase = 'starting';
     }
     
     const startTime = Date.now();
-    const MAX_RUNTIME = 45000; // 45 seconds max runtime
+    const MAX_RUNTIME = 300000; // 5 minutes max runtime (Paid Plan: 30s CPU + 1000 subrequests)
     let processed = 0;
     let analyzed = 0;
     let discovered = 0;
@@ -868,7 +1114,7 @@ export class GitHubAgent {
       
       let processed = 0;
       let analyzed = 0;
-      const MAX_BATCH = force ? Math.max(10, minRepos) : 10; // In force mode, process at least minRepos
+      const MAX_BATCH = force ? Math.max(25, minRepos) : 25; // Paid Plan: Increased from 10 to 25
       
       for (const repoId of tier1Repos.slice(0, MAX_BATCH)) {
         if (Date.now() - startTime > maxRuntime) {
@@ -925,8 +1171,8 @@ export class GitHubAgent {
             this.scanProgress.tier1.analyzed = analyzed;
           }
           
-          // Rate limiting - increased delay to avoid hitting limits
-          await new Promise(resolve => setTimeout(resolve, 3000)); // 3 seconds between analyses
+          // Rate limiting - optimized for paid plan (reduced from 3s to 2s)
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds between analyses
         } catch (error) {
           this.logError(`Error processing tier 1 repo ${repoId}`, error);
         }
@@ -956,8 +1202,8 @@ export class GitHubAgent {
       
       let processed = 0;
       let analyzed = 0;
-      const MAX_BATCH = force ? Math.max(20, minRepos) : 20; // In force mode, process at least minRepos
-      const ANALYZE_TOP = 5; // Analyze top 5 Tier 2 repos
+      const MAX_BATCH = force ? Math.max(50, minRepos) : 50; // Paid Plan: Increased from 20 to 50
+      const ANALYZE_TOP = 10; // Paid Plan: Increased from 5 to 10 Tier 2 repos
       
       for (let i = 0; i < tier2Repos.length && i < MAX_BATCH; i++) {
         if (Date.now() - startTime > maxRuntime) {
@@ -1008,8 +1254,8 @@ export class GitHubAgent {
               analyzed++;
               this.log(`Successfully analyzed ${repo.full_name} with Claude AI`);
             }
-            // Extra delay after Claude analysis
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Extra delay after Claude analysis - optimized for paid plan
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
           
           await this.storage.markRepoScanned(repoId, 'basic');
@@ -1050,7 +1296,7 @@ export class GitHubAgent {
       }
       
       let processed = 0;
-      const MAX_BATCH = force ? Math.max(30, minRepos) : 30; // In force mode, process at least minRepos
+      const MAX_BATCH = force ? Math.max(100, minRepos) : 100; // Paid Plan: Increased from 30 to 100
       
       // Batch process for efficiency
       const batch = tier3Repos.slice(0, MAX_BATCH);

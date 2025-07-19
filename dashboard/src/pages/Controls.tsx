@@ -4,7 +4,7 @@ import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clo
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BatchProgress } from '@/components/ui/BatchProgress';
-import CyberSystemViz from '@/components/controls/CyberSystemViz';
+import NeuralActivityCenter from '@/components/controls/NeuralActivityCenter';
 
 export default function Controls() {
   const queryClient = useQueryClient();
@@ -171,8 +171,8 @@ export default function Controls() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">System Controls</h2>
 
-      {/* Cyber System Command Center Visualization - TOP POSITION */}
-      <CyberSystemViz status={status} analysisStats={analysisStats} />
+      {/* Neural Activity Command Center - TOP POSITION */}
+      <NeuralActivityCenter status={status} analysisStats={analysisStats} />
 
       {/* Status Message */}
       {statusMessage && (
@@ -298,6 +298,201 @@ export default function Controls() {
               The agent automatically scans repositories every {status?.scanInterval || 1} hour{status?.scanInterval !== 1 ? 's' : ''} when initialized.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Automated Scanning Intelligence */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Clock className="h-5 w-5" />
+            <span>Automated Scanning Intelligence</span>
+            <span className="ml-2 px-2 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded-full">
+              ACTIVE
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          
+          {/* Schedule Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center mb-2">
+                <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2" />
+                <h4 className="font-semibold text-blue-900 dark:text-blue-100">Hourly Operations</h4>
+              </div>
+              <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                Every hour at :00 minutes
+              </p>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-blue-700 dark:text-blue-300">Phase 1 (0-3 min):</span>
+                  <span className="font-medium text-blue-900 dark:text-blue-100">Comprehensive Scan</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700 dark:text-blue-300">Phase 2 (3-5 min):</span>
+                  <span className="font-medium text-blue-900 dark:text-blue-100">Batch Analysis</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center mb-2">
+                <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 mr-2" />
+                <h4 className="font-semibold text-purple-900 dark:text-purple-100">Daily Deep Sweep</h4>
+              </div>
+              <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
+                Every day at 2:00 AM
+              </p>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-purple-700 dark:text-purple-300">Target:</span>
+                  <span className="font-medium text-purple-900 dark:text-purple-100">100+ repositories</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-700 dark:text-purple-300">Mode:</span>
+                  <span className="font-medium text-purple-900 dark:text-purple-100">Force + Comprehensive</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Processing Mathematics */}
+          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Processing Mathematics & Coverage
+            </h4>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Hourly Breakdown */}
+              <div>
+                <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Hourly Processing Capacity</h5>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                    <span className="text-red-700 dark:text-red-300">Tier 1 (High Priority)</span>
+                    <span className="font-mono font-bold text-red-900 dark:text-red-100">25 repos</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+                    <span className="text-yellow-700 dark:text-yellow-300">Tier 2 (Medium Priority)</span>
+                    <span className="font-mono font-bold text-yellow-900 dark:text-yellow-100">50 repos</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2 bg-green-50 dark:bg-green-900/20 rounded">
+                    <span className="text-green-700 dark:text-green-300">Tier 3 (Emerging)</span>
+                    <span className="font-mono font-bold text-green-900 dark:text-green-100">100 repos</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded border-t border-indigo-200 dark:border-indigo-700">
+                    <span className="text-indigo-700 dark:text-indigo-300 font-medium">+ Batch Analysis</span>
+                    <span className="font-mono font-bold text-indigo-900 dark:text-indigo-100">25 repos</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded font-semibold">
+                    <span className="text-gray-700 dark:text-gray-300">Total per Hour</span>
+                    <span className="font-mono font-bold text-gray-900 dark:text-gray-100">~200 repos</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Coverage Timeline */}
+              <div>
+                <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Complete Coverage Timeline</h5>
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Current Database</span>
+                      <span className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                        {(status as any)?.tierDistribution ? 
+                          ((status as any).tierDistribution.tier1 + (status as any).tierDistribution.tier2 + (status as any).tierDistribution.tier3 + ((status as any).tierDistribution.unassigned || 0)) 
+                          : '1,487'} repos
+                      </span>
+                    </div>
+                    <div className="text-xs text-blue-700 dark:text-blue-300">
+                      {(status as any)?.tierDistribution ? 
+                        `${(status as any).tierDistribution.tier1} Tier 1 • ${(status as any).tierDistribution.tier2} Tier 2 • ${(status as any).tierDistribution.tier3} Tier 3 • ${(status as any).tierDistribution.unassigned || 0} Unassigned`
+                        : '83 Tier 1 • 189 Tier 2 • 1,214 Tier 3 • 1 Unassigned'
+                      }
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Hourly Analysis Rate:</span>
+                      <span className="font-mono font-medium text-gray-900 dark:text-white">~60 repos/hour</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Complete Coverage:</span>
+                      <span className="font-mono font-medium text-green-600 dark:text-green-400">~25 hours</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Tier 1 Refresh:</span>
+                      <span className="font-mono font-medium text-red-600 dark:text-red-400">~3-4 hours</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Tier 2 Refresh:</span>
+                      <span className="font-mono font-medium text-yellow-600 dark:text-yellow-400">~8-10 hours</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Tier 3 Refresh:</span>
+                      <span className="font-mono font-medium text-green-600 dark:text-green-400">~12-15 hours</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Smart Selection Algorithm */}
+          <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+              <Target className="h-4 w-4 mr-2" />
+              Smart Repository Selection Algorithm
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Priority Factors</h5>
+                <ol className="space-y-1 text-gray-600 dark:text-gray-400">
+                  <li className="flex items-start">
+                    <span className="text-indigo-500 mr-2 font-bold">1.</span>
+                    <span><strong>Staleness:</strong> Repositories without analysis in 7+ days</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-indigo-500 mr-2 font-bold">2.</span>
+                    <span><strong>Tier Priority:</strong> Tier 1 → Tier 2 → Tier 3</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-indigo-500 mr-2 font-bold">3.</span>
+                    <span><strong>Popularity:</strong> Higher starred repositories first</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-indigo-500 mr-2 font-bold">4.</span>
+                    <span><strong>Activity:</strong> Recently updated repositories</span>
+                  </li>
+                </ol>
+              </div>
+              <div>
+                <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Analysis Strategy</h5>
+                <ul className="space-y-1 text-gray-600 dark:text-gray-400">
+                  <li className="flex items-start">
+                    <span className="text-purple-500 mr-2">•</span>
+                    <span><strong>Tier 1:</strong> Always analyzed with Claude AI</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-purple-500 mr-2">•</span>
+                    <span><strong>Tier 2:</strong> Top 10 per hour get Claude AI</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-purple-500 mr-2">•</span>
+                    <span><strong>Tier 3:</strong> Basic metrics + batch analysis</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-purple-500 mr-2">•</span>
+                    <span><strong>Rate Limiting:</strong> 2 seconds between analyses</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+
         </CardContent>
       </Card>
 

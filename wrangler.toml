@@ -41,7 +41,10 @@ vars = { ENVIRONMENT = "development" }
 
 # Cron triggers for automated scanning
 [triggers]
-crons = ["0 * * * *"]  # Every hour for comprehensive scan
+crons = [
+  "0 * * * *",    # Every hour: Comprehensive scan + Batch analysis
+  "0 2 * * *"     # Daily at 2 AM: Full comprehensive sweep
+]
 
 # Observability configuration
 [observability.logs]

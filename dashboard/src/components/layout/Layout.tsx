@@ -29,38 +29,66 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const [, setPulse] = useState(0);
 
-  // Fetch real system data
+  // Fetch real system data with faster refresh rates
   const { data: status } = useQuery({
     queryKey: ['status'],
     queryFn: api.getStatus,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 10000, // Refresh every 10 seconds for rate limits
+    refetchIntervalInBackground: true,
     retry: 1,
+    staleTime: 5000,
   });
 
   const { data: analysisStats } = useQuery({
     queryKey: ['analysis-stats'],
     queryFn: api.getAnalysisStats,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 5000, // Refresh every 5 seconds for analysis progress
+    refetchIntervalInBackground: true,
     retry: 1,
+    staleTime: 2000,
   });
 
   const { data: workerMetrics } = useQuery({
     queryKey: ['worker-metrics'],
     queryFn: api.getWorkerMetrics,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 3000, // Refresh every 3 seconds for most dynamic data
+    refetchIntervalInBackground: true,
     retry: 1,
+    staleTime: 1000,
   });
 
-  // Calculate real metrics
-  const apiUsage = status?.rateLimits?.github 
+
+  // Calculate hybrid API activity (rate limits + real-time activity)
+  const rateLimitUsage = status?.rateLimits?.github 
     ? Math.round(((status.rateLimits.github.maxTokens - status.rateLimits.github.availableTokens) / status.rateLimits.github.maxTokens) * 100)
     : 0;
 
-  const analysisProgress = analysisStats?.analysisProgress || 0;
+  // Get real-time API activity from worker metrics
+  const realtimeApiActivity = workerMetrics?.metrics && workerMetrics.metrics.length > 0
+    ? workerMetrics.metrics[workerMetrics.metrics.length - 1]?.components?.apiActivity || 0
+    : 0;
 
-  const queueLoad = analysisStats 
+  // Hybrid API usage calculation (40% rate limits + 60% real-time activity)
+  const apiUsage = Math.round((rateLimitUsage * 0.4) + (realtimeApiActivity * 0.6));
+
+  // Enhanced analysis progress (existing + AI processing activity)
+  const baseAnalysisProgress = analysisStats?.analysisProgress || 0;
+  const aiProcessingActivity = workerMetrics?.metrics && workerMetrics.metrics.length > 0
+    ? workerMetrics.metrics[workerMetrics.metrics.length - 1]?.components?.analysisActivity || 0
+    : 0;
+  
+  const analysisProgress = Math.max(baseAnalysisProgress, aiProcessingActivity);
+
+  // Enhanced queue load (existing + database activity)
+  const baseQueueLoad = analysisStats 
     ? Math.round((analysisStats.remainingRepositories / analysisStats.totalRepositories) * 100)
     : 0;
+  
+  const dbActivity = workerMetrics?.metrics && workerMetrics.metrics.length > 0
+    ? workerMetrics.metrics[workerMetrics.metrics.length - 1]?.components?.dbActivity || 0
+    : 0;
+
+  const queueLoad = Math.max(baseQueueLoad, dbActivity);
 
   const systemHealth = status?.status === 'ok' ? 'SYSTEMS OPERATIONAL' : 'SYSTEM DEGRADED';
   const systemHealthColor = status?.status === 'ok' ? '#10b981' : '#f59e0b';
@@ -486,9 +514,10 @@ export default function Layout({ children }: LayoutProps) {
         
         .metric-value {
           color: #10b981;
-          font-weight: 600;
+          font-weight: 500;
           width: 32px;
           text-align: right;
+          font-size: 0.65rem;
         }
         
         .data-stream-container {
@@ -646,21 +675,39 @@ Activity: ${metric.activityType.replace('-', ' ')}`}
 
             {/* System Metrics */}
             <div className="activity-metrics">
-              <div className="metric-row">
+              <div 
+                className="metric-row"
+                title={`API Activity: ${apiUsage}%
+Rate Limit Usage: ${rateLimitUsage}% (${status?.rateLimits?.github?.availableTokens || 0}/${status?.rateLimits?.github?.maxTokens || 0} tokens)
+Real-time Activity: ${Math.round(realtimeApiActivity)}%
+Hybrid calculation: 40% rate limits + 60% real-time activity`}
+              >
                 <span className="metric-label">API</span>
                 <div className="metric-bar">
                   <div className="metric-fill cpu-fill" style={{ width: `${apiUsage}%` }} />
                 </div>
                 <span className="metric-value">{apiUsage}%</span>
               </div>
-              <div className="metric-row">
+              <div 
+                className="metric-row"
+                title={`Analysis Progress: ${Math.round(analysisProgress)}%
+Base Progress: ${Math.round(baseAnalysisProgress)}% (${analysisStats?.analyzedRepositories || 0}/${analysisStats?.totalRepositories || 0} repos)
+AI Processing: ${Math.round(aiProcessingActivity)}%
+Shows max of analysis progress or current AI activity`}
+              >
                 <span className="metric-label">ANA</span>
                 <div className="metric-bar">
                   <div className="metric-fill mem-fill" style={{ width: `${analysisProgress}%` }} />
                 </div>
                 <span className="metric-value">{Math.round(analysisProgress)}%</span>
               </div>
-              <div className="metric-row">
+              <div 
+                className="metric-row"
+                title={`Queue Load: ${queueLoad}%
+Base Queue: ${baseQueueLoad}% (${analysisStats?.remainingRepositories || 0} repos remaining)
+Database Activity: ${Math.round(dbActivity)}%
+Shows max of queue load or current database activity`}
+              >
                 <span className="metric-label">QUE</span>
                 <div className="metric-bar">
                   <div className="metric-fill net-fill" style={{ width: `${queueLoad}%` }} />
