@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clock, BarChart3, Target } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -12,7 +12,21 @@ export default function Controls() {
   const [isScanning, setIsScanning] = useState(false);
   const [forceMode, setForceMode] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  
+  // Initialize activeBatchId from localStorage
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(() => {
+    const storedBatchId = localStorage.getItem('activeBatchId');
+    return storedBatchId || null;
+  });
+
+  // Update localStorage whenever activeBatchId changes
+  useEffect(() => {
+    if (activeBatchId) {
+      localStorage.setItem('activeBatchId', activeBatchId);
+    } else {
+      localStorage.removeItem('activeBatchId');
+    }
+  }, [activeBatchId]);
 
   const { data: status, error: statusError } = useQuery({
     queryKey: ['status'],
@@ -622,18 +636,24 @@ export default function Controls() {
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
               Enhanced batch processing: up to 30 repositories with priority ordering, 2s delays, and retry logic
             </p>
-            
-            {/* Real-time Progress Tracking */}
-            {activeBatchId && (
-              <div className="mt-4">
-                <BatchProgress
-                  batchId={activeBatchId}
-                  onComplete={handleBatchComplete}
-                  onError={handleBatchError}
-                />
-              </div>
-            )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Batch Analysis Progress - Always Visible */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Sparkles className="h-5 w-5" />
+            <span>Batch Analysis Progress</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <BatchProgress
+            batchId={activeBatchId}
+            onComplete={handleBatchComplete}
+            onError={handleBatchError}
+          />
         </CardContent>
       </Card>
 
