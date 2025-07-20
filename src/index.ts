@@ -343,6 +343,7 @@ class WorkerService extends BaseService {
         date: new Date().toISOString(),
         high_growth_repos: highGrowthRepos.slice(0, 10).map(repo => ({
           name: repo.full_name,
+          description: repo.description,
           stars: repo.stars,
           language: repo.language,
           topics: repo.topics

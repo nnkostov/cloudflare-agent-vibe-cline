@@ -206,10 +206,11 @@ export class StorageService extends BaseService {
     return results.map(this.parseTrend);
   }
 
-  // High growth repos
+  // High growth repos with fallback logic
   async getHighGrowthRepos(days: number = 30, minGrowthPercent: number = 200): Promise<Repository[]> {
     return this.performanceMonitor.monitor('getHighGrowthRepos', async () => {
-      const results = await this.dbAll<any>(`
+      // First, try to get repos with actual historical growth data
+      const growthResults = await this.dbAll<any>(`
         WITH growth_calc AS (
           SELECT r.*, 
             CAST((m1.stars - m2.stars) AS REAL) / NULLIF(m2.stars, 0) * 100 as growth_percent
@@ -226,7 +227,64 @@ export class StorageService extends BaseService {
         ORDER BY growth_percent DESC LIMIT 50`,
         days, minGrowthPercent
       );
-      return results.map(this.parseRepository);
+
+      // If we have historical growth data, return it
+      if (growthResults.length > 0) {
+        console.log(`Found ${growthResults.length} repositories with historical growth data`);
+        return growthResults.map(this.parseRepository);
+      }
+
+      // Fallback: Get high-potential repositories using alternative criteria
+      console.log('No historical growth data found, using fallback criteria for high-growth repos');
+      
+      // Try to get repositories from repo_tiers table (Tier 1 = highest potential)
+      const tierResults = await this.dbAll<any>(`
+        SELECT r.*, 1 as tier_priority
+        FROM repositories r
+        JOIN repo_tiers rt ON r.id = rt.repo_id
+        WHERE rt.tier = 1 
+          AND r.is_archived = 0 
+          AND r.is_fork = 0
+          AND r.stars >= 100
+        ORDER BY r.stars DESC, r.updated_at DESC
+        LIMIT 25
+      `);
+
+      if (tierResults.length > 0) {
+        console.log(`Found ${tierResults.length} Tier 1 repositories as high-growth candidates`);
+        
+        // Add some Tier 2 repositories to fill out the list
+        const tier2Results = await this.dbAll<any>(`
+          SELECT r.*, 2 as tier_priority
+          FROM repositories r
+          JOIN repo_tiers rt ON r.id = rt.repo_id
+          WHERE rt.tier = 2 
+            AND r.is_archived = 0 
+            AND r.is_fork = 0
+            AND r.stars >= 50
+          ORDER BY r.stars DESC, r.updated_at DESC
+          LIMIT 15
+        `);
+
+        const combinedResults = [...tierResults, ...tier2Results];
+        return combinedResults.map(this.parseRepository);
+      }
+
+      // Final fallback: Get recently active repositories with high stars
+      console.log('No tier data found, using star-based fallback for high-growth repos');
+      const starResults = await this.dbAll<any>(`
+        SELECT r.*
+        FROM repositories r
+        WHERE r.is_archived = 0 
+          AND r.is_fork = 0
+          AND r.stars >= 500
+          AND r.updated_at >= datetime('now', '-30 days')
+        ORDER BY r.stars DESC, r.updated_at DESC
+        LIMIT 30
+      `);
+
+      console.log(`Found ${starResults.length} high-star repositories as fallback`);
+      return starResults.map(this.parseRepository);
     });
   }
 
@@ -350,6 +408,12 @@ export class StorageService extends BaseService {
       topics: JSON.parse(row.topics || '[]'),
       is_archived: Boolean(row.is_archived),
       is_fork: Boolean(row.is_fork),
+      // Ensure numeric fields have valid defaults
+      stars: row.stars || 0,
+      forks: row.forks || 0,
+      open_issues: row.open_issues || 0,
+      // Ensure growth_rate exists for high growth repos
+      growth_rate: row.growth_rate || row.growth_percent || 0,
     };
   }
 

@@ -308,7 +308,12 @@ class ApiClient {
 export const api = new ApiClient();
 
 // Utility functions
-export function formatNumber(num: number): string {
+export function formatNumber(num: number | undefined | null): string {
+  // Handle undefined, null, or invalid numbers
+  if (num === undefined || num === null || isNaN(num)) {
+    return '0';
+  }
+  
   if (num >= 1000000) {
     return `${(num / 1000000).toFixed(1)}M`;
   } else if (num >= 1000) {

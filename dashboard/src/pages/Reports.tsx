@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Download, AlertCircle } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { api, formatNumber } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { formatDate } from '@/lib/utils';
@@ -69,19 +69,13 @@ export default function Reports() {
           {/* Report Header */}
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {reportType === 'daily' ? 'Daily Investment Report' : 'Enhanced System Report'}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Generated on {formatDate(report.date)}
-                  </p>
-                </div>
-                <button className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </button>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {reportType === 'daily' ? 'Daily Investment Report' : 'Enhanced System Report'}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Generated on {formatDate(report.date)}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -96,21 +90,33 @@ export default function Reports() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {Object.entries(enhancedReport.tier_summary).map(([tier, data]: [string, any]) => (
-                      <div key={tier} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                          {data.count}
+                    {Object.entries(enhancedReport.tier_summary).map(([tier, data]: [string, any]) => {
+                      // Handle both old format (1,2,3) and new format (tier1,tier2,tier3)
+                      const tierNumber = tier.replace('tier', '');
+                      const tierLabel = tierNumber === '1' ? 'Hot Prospects' : 
+                                       tierNumber === '2' ? 'Rising Stars' : 
+                                       tierNumber === '3' ? 'Long Tail' : 'Unknown';
+                      
+                      return (
+                        <div key={tier} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                          <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                            {data.count}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            Tier {tierNumber} Repositories
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                            {tierLabel}
+                          </div>
+                          {/* Show coverage warning for low numbers */}
+                          {data.count < 50 && (
+                            <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              ⚠️ Limited Coverage
+                            </div>
+                          )}
                         </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          Tier {tier} Repositories
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-                          {tier === '1' && 'Hot Prospects'}
-                          {tier === '2' && 'Rising Stars'}
-                          {tier === '3' && 'Long Tail'}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -172,15 +178,15 @@ export default function Reports() {
                         </div>
                       </div>
                       <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <div className="text-sm text-gray-600 dark:text-gray-400">New Analyses</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Analyses Performed</div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                          {formatNumber(dailyReport.metrics.new_analyses || 0)}
+                          {formatNumber(dailyReport.metrics.analyses_performed || 0)}
                         </div>
                       </div>
                       <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Alerts Generated</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Alerts Sent</div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                          {formatNumber(dailyReport.metrics.alerts_generated || 0)}
+                          {formatNumber(dailyReport.metrics.alerts_sent || 0)}
                         </div>
                       </div>
                       <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -201,20 +207,48 @@ export default function Reports() {
                     <CardTitle>Top Investment Opportunities</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {dailyReport.investment_opportunities.slice(0, 5).map((repo: any) => (
-                        <div key={repo.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                          <div>
-                            <div className="font-medium text-gray-900 dark:text-white">
-                              {repo.full_name}
-                            </div>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">
-                              Score: {repo.investment_score}/100 • {repo.recommendation}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              ⭐ {formatNumber(repo.stars)}
+                    <div className="space-y-6">
+                      {dailyReport.investment_opportunities.slice(0, 5).map((opportunity: any, index: number) => (
+                        <div key={opportunity.repository?.id || index} className="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border-l-4 border-green-500">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <div className="font-semibold text-lg text-gray-900 dark:text-white">
+                                  {opportunity.repository?.full_name || 'Unknown Repository'}
+                                </div>
+                                <div className="px-3 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-sm font-medium rounded-full">
+                                  {opportunity.analysis?.investment_score || 0}/100
+                                </div>
+                                <div className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-sm font-medium rounded-full capitalize">
+                                  {opportunity.analysis?.recommendation || 'N/A'}
+                                </div>
+                              </div>
+                              
+                              <div className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                ⭐ {formatNumber(opportunity.repository?.stars || 0)} stars • {opportunity.repository?.language || 'Unknown'}
+                              </div>
+                              
+                              {opportunity.analysis?.strengths && opportunity.analysis.strengths.length > 0 && (
+                                <div className="mb-3">
+                                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Key Strengths:</div>
+                                  <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                    {opportunity.analysis.strengths.slice(0, 2).map((strength: string, idx: number) => (
+                                      <li key={idx} className="flex items-start">
+                                        <span className="text-green-500 mr-2">•</span>
+                                        <span>{strength}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {opportunity.analysis?.summary && (
+                                <div className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">
+                                  {opportunity.analysis.summary.length > 200 
+                                    ? `${opportunity.analysis.summary.substring(0, 200)}...` 
+                                    : opportunity.analysis.summary}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -238,60 +272,43 @@ export default function Reports() {
                   {(reportType === 'enhanced' 
                     ? enhancedReport?.high_growth_repos_with_metrics 
                     : dailyReport?.high_growth_repos
-                  )?.slice(0, 10).map((repo: any) => (
-                    <div key={repo.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          {repo.full_name}
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {repo.description || 'No description'}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          ⭐ {formatNumber(repo.stars)}
-                        </div>
-                        {repo.growth_rate && (
-                          <div className="text-xs text-green-600 dark:text-green-400">
-                            +{repo.growth_rate.toFixed(1)}%
+                  )?.slice(0, 10).map((repo: any, index: number) => {
+                    // Handle different data structures between enhanced and daily reports
+                    const repoData = reportType === 'enhanced' ? repo.repository : repo;
+                    const repoId = repoData?.id || `${reportType}-${index}`;
+                    const fullName = repoData?.full_name || repoData?.name || 'Unknown Repository';
+                    const description = repoData?.description || 'No description';
+                    const stars = repoData?.stars || 0;
+                    const growthRate = repoData?.growth_rate || repo.growth_rate || 0;
+                    
+                    return (
+                      <div key={repoId} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div>
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            {fullName}
                           </div>
-                        )}
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            {description}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            ⭐ {formatNumber(stars)}
+                          </div>
+                          {growthRate > 0 && (
+                            <div className="text-xs text-green-600 dark:text-green-400">
+                              +{growthRate.toFixed(1)}%
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Recent Alerts */}
-          {report.recent_alerts && report.recent_alerts.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Alerts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {report.recent_alerts.slice(0, 5).map((alert: any) => (
-                    <div key={alert.id} className="flex items-start space-x-3">
-                      <AlertCircle className={`h-5 w-5 mt-0.5 ${
-                        alert.level === 'urgent' ? 'text-red-500' :
-                        alert.level === 'high' ? 'text-orange-500' :
-                        'text-yellow-500'
-                      }`} />
-                      <div className="flex-1">
-                        <p className="text-sm text-gray-900 dark:text-white">{alert.message}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {formatDate(alert.sent_at)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       ) : (
         <Card>
