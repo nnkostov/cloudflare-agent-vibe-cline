@@ -1,6 +1,6 @@
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, TrendingUp, Users, Lightbulb, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, TrendingUp, Users, Lightbulb, AlertTriangle, Loader2, FileText } from 'lucide-react';
 import { api, getScoreColor, getRecommendationBadge } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { formatDate } from '@/lib/utils';
@@ -36,7 +36,7 @@ export default function Analysis() {
   const [shouldGenerate, setShouldGenerate] = useState(false);
 
   // Query to check if analysis exists
-  const { data: analysis, isLoading, error } = useQuery<AnalysisData | null>({
+  const { data: analysisResponse, isLoading, error } = useQuery<{analysis: AnalysisData, repository: any} | null>({
     queryKey: ['analysis', owner, repo],
     queryFn: async () => {
       // Skip the initial check if we should generate immediately
@@ -53,12 +53,13 @@ export default function Analysis() {
         console.log('[Analysis] Result type:', typeof result);
         console.log('[Analysis] Result keys:', result ? Object.keys(result) : 'null');
         
-        // The API returns { message: string, analysis: AnalysisData } structure
+        // The API returns { message: string, analysis: AnalysisData, repository: RepositoryData } structure
         if (result && result.analysis) {
           console.log('[Analysis] Found analysis in result.analysis');
           console.log('[Analysis] Analysis data:', result.analysis);
+          console.log('[Analysis] Repository data:', result.repository);
           console.log('[Analysis] analyzed_at field:', result.analysis.analyzed_at);
-          return result.analysis;
+          return { analysis: result.analysis, repository: result.repository };
         }
         
         // If we get an error response, return null to trigger generation
@@ -86,6 +87,10 @@ export default function Analysis() {
     refetchInterval: pollingInterval,
   });
 
+  // Extract analysis and repository data
+  const analysis = analysisResponse?.analysis || null;
+  const repository = analysisResponse?.repository || null;
+
   // Mutation to trigger analysis generation
   const generateAnalysisMutation = useMutation({
     mutationFn: async () => {
@@ -103,13 +108,13 @@ export default function Analysis() {
           // Check if we got the analysis directly
           if (result.analysis) {
             console.log('[Analysis] Got immediate analysis result');
-            return result.analysis;
+            return { analysis: result.analysis, repository: result.repository };
           }
           
           // Check if it's wrapped in a response object
           if (result.message && result.analysis) {
             console.log('[Analysis] Got analysis in response wrapper');
-            return result.analysis;
+            return { analysis: result.analysis, repository: result.repository };
           }
           
           // If we get a message saying analysis is being generated, start polling
@@ -412,6 +417,21 @@ export default function Analysis() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Repository Description */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <FileText className="h-5 w-5 mr-2 text-gray-500" />
+            Repository Description
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+            {repository?.description || 'No description available'}
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Analysis Details */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

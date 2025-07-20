@@ -433,8 +433,11 @@ export class GitHubAgent {
           repository: {
             id: repo.id,
             full_name: repo.full_name,
+            description: repo.description,
             stars: repo.stars,
-            language: repo.language
+            forks: repo.forks,
+            language: repo.language,
+            topics: repo.topics
           }
         });
       }
@@ -478,8 +481,11 @@ export class GitHubAgent {
         repository: {
           id: repo.id,
           full_name: repo.full_name,
+          description: repo.description,
           stars: repo.stars,
-          language: repo.language
+          forks: repo.forks,
+          language: repo.language,
+          topics: repo.topics
         }
       });
     }
@@ -490,8 +496,11 @@ export class GitHubAgent {
       repository: {
         id: repo.id,
         full_name: repo.full_name,
+        description: repo.description,
         stars: repo.stars,
-        language: repo.language
+        forks: repo.forks,
+        language: repo.language,
+        topics: repo.topics
       }
     });
   }
