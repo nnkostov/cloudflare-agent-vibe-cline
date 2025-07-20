@@ -442,18 +442,51 @@ export class GitHubAgent {
     
     // If no analysis exists or force is true, always analyze
     // When explicitly requested via API, we should always provide an analysis
-    const analysis = await this.analyzeRepository(repo, true); // Always force when requested via API
+    const generatedAnalysis = await this.analyzeRepository(repo, true); // Always force when requested via API
     
-    if (!analysis) {
+    if (!generatedAnalysis) {
       // If analysis still failed, return an error
       return this.jsonResponse({ 
         error: 'Failed to generate analysis for this repository' 
       }, 500);
     }
     
+    // Small delay to ensure database write is complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Fetch the saved analysis from database to ensure we have complete data
+    const savedAnalysis = await this.storage.getLatestAnalysis(repo.id);
+    
+    if (!savedAnalysis) {
+      // Fallback to the generated analysis if retrieval fails
+      return this.jsonResponse({ 
+        message: 'Analysis completed',
+        analysis: {
+          repo_id: repo.id,
+          investment_score: generatedAnalysis.scores.investment,
+          innovation_score: generatedAnalysis.scores.innovation,
+          team_score: generatedAnalysis.scores.team,
+          market_score: generatedAnalysis.scores.market,
+          recommendation: generatedAnalysis.recommendation,
+          summary: generatedAnalysis.summary,
+          strengths: generatedAnalysis.strengths,
+          risks: generatedAnalysis.risks,
+          key_questions: generatedAnalysis.questions,
+          model_used: generatedAnalysis.metadata.model,
+          analyzed_at: new Date().toISOString()
+        },
+        repository: {
+          id: repo.id,
+          full_name: repo.full_name,
+          stars: repo.stars,
+          language: repo.language
+        }
+      });
+    }
+    
     return this.jsonResponse({ 
       message: 'Analysis completed',
-      analysis,
+      analysis: savedAnalysis,
       repository: {
         id: repo.id,
         full_name: repo.full_name,

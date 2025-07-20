@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, TrendingUp, Users, Lightbulb, AlertTriangle, Loader2 } from 'lucide-react';
 import { api, getScoreColor, getRecommendationBadge } from '@/lib/api';
@@ -27,9 +27,11 @@ interface AnalysisData {
 
 export default function Analysis() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationMessage, setGenerationMessage] = useState('');
+  const shouldGenerateImmediately = searchParams.get('generate') === 'true';
+  const [isGenerating, setIsGenerating] = useState(shouldGenerateImmediately);
+  const [generationMessage, setGenerationMessage] = useState(shouldGenerateImmediately ? 'Initiating AI analysis...' : '');
   const [pollingInterval, setPollingInterval] = useState<number | false>(false);
   const [shouldGenerate, setShouldGenerate] = useState(false);
 
@@ -37,6 +39,12 @@ export default function Analysis() {
   const { data: analysis, isLoading, error } = useQuery<AnalysisData | null>({
     queryKey: ['analysis', owner, repo],
     queryFn: async () => {
+      // Skip the initial check if we should generate immediately
+      if (shouldGenerateImmediately) {
+        console.log('[Analysis] Skipping initial check - will generate immediately');
+        return null;
+      }
+      
       console.log('[Analysis] Starting query for:', owner, repo);
       try {
         // Only fetch existing analysis, don't trigger generation here
@@ -73,7 +81,7 @@ export default function Analysis() {
         return null;
       }
     },
-    enabled: !!owner && !!repo,
+    enabled: !!owner && !!repo && !shouldGenerateImmediately,
     retry: false,
     refetchInterval: pollingInterval,
   });
@@ -142,12 +150,25 @@ export default function Analysis() {
     },
   });
 
-  // Stop polling when analysis is found and force refresh
+  // Stop polling when analysis is found and is complete
   useEffect(() => {
     if (analysis && isGenerating) {
-      console.log('[Analysis] Analysis complete, refreshing page...');
-      // Force refresh to ensure clean state
-      window.location.reload();
+      // Check if the analysis is complete (has all required fields)
+      // Just check for a valid date - the model name might vary
+      const hasValidDate = analysis.analyzed_at && 
+                          analysis.analyzed_at !== 'Invalid Date' &&
+                          !analysis.analyzed_at.includes('Invalid');
+      
+      if (hasValidDate) {
+        console.log('[Analysis] Analysis complete with valid date, stopping generation state');
+        setIsGenerating(false);
+        setPollingInterval(false);
+      } else {
+        console.log('[Analysis] Analysis found but date invalid, continuing to poll...', {
+          analyzed_at: analysis.analyzed_at,
+          model_used: analysis.model_used
+        });
+      }
     }
   }, [analysis, isGenerating]);
 
@@ -179,6 +200,14 @@ export default function Analysis() {
     }
   }, [isGenerating]);
 
+  // Trigger generation immediately if query parameter is present
+  useEffect(() => {
+    if (shouldGenerateImmediately && owner && repo && !generateAnalysisMutation.isPending) {
+      console.log('[Analysis] Triggering immediate generation due to query parameter');
+      generateAnalysisMutation.mutate();
+    }
+  }, [shouldGenerateImmediately, owner, repo]); // Only run once on mount
+
   // Trigger analysis generation if no analysis exists after initial load
   useEffect(() => {
     console.log('[Analysis] Auto-trigger check:', {
@@ -189,8 +218,14 @@ export default function Analysis() {
       owner,
       repo,
       shouldGenerate,
+      shouldGenerateImmediately,
       isPending: generateAnalysisMutation.isPending
     });
+    
+    // Skip if we're already generating from the query parameter
+    if (shouldGenerateImmediately) {
+      return;
+    }
     
     if (!isLoading && !analysis && !error && !isGenerating && owner && repo && !shouldGenerate) {
       console.log('[Analysis] Conditions met - triggering generation...');
@@ -201,9 +236,10 @@ export default function Analysis() {
         generateAnalysisMutation.mutate();
       }, 100);
     }
-  }, [isLoading, analysis, error, isGenerating, owner, repo, shouldGenerate]); // Removed mutation from deps
+  }, [isLoading, analysis, error, isGenerating, owner, repo, shouldGenerate, shouldGenerateImmediately]); // Removed mutation from deps
 
-  if (isLoading || isGenerating) {
+  // Show loading state if we're loading, generating, or about to generate
+  if (isLoading || isGenerating || (shouldGenerateImmediately && !analysis)) {
     return (
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
@@ -216,7 +252,7 @@ export default function Analysis() {
           </Link>
         </div>
         
-        {isGenerating ? (
+        {(isGenerating || shouldGenerateImmediately) ? (
           <Card>
             <CardContent className="p-8">
               <div className="flex flex-col items-center justify-center space-y-4">

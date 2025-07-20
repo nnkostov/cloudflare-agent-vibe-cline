@@ -297,7 +297,7 @@ export default function Leaderboard() {
                         
                         return (
                           <Link
-                            to={`/analysis/${owner}/${name}`}
+                            to={`/analysis/${owner}/${name}${!hasAnalysis ? '?generate=true' : ''}`}
                             className={`flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all ${
                               hasAnalysis
                                 ? 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600'

@@ -113,16 +113,19 @@ export class StorageUnifiedService extends BaseService {
 
   // Analysis operations
   async saveAnalysis(analysis: Analysis): Promise<void> {
+    // Ensure we have the full model name
+    const modelName = analysis.metadata.model || 'claude-3-opus-20240229';
+    
     await this.dbRun(`
       INSERT INTO analyses (
         repo_id, investment_score, innovation_score, team_score, market_score,
-        recommendation, summary, strengths, risks, questions, model, cost
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        recommendation, summary, strengths, risks, questions, model, cost, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       analysis.repo_id, analysis.scores.investment, analysis.scores.innovation,
       analysis.scores.team, analysis.scores.market, analysis.recommendation,
       analysis.summary, JSON.stringify(analysis.strengths),
       JSON.stringify(analysis.risks), JSON.stringify(analysis.questions),
-      analysis.metadata.model, analysis.metadata.cost
+      modelName, analysis.metadata.cost
     );
 
     // Archive to R2
