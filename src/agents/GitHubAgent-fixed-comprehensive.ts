@@ -93,6 +93,8 @@ export class GitHubAgent {
         '/tiers': () => this.handleTiers(request),
         '/batch/status': () => this.handleBatchStatus(request),
         '/batch/start': () => this.handleBatchStart(request),
+        '/batch/stop': () => this.handleBatchStop(request),
+        '/batch/clear': () => this.handleBatchClear(),
       };
 
       const handler = handlers[url.pathname];
@@ -148,8 +150,8 @@ export class GitHubAgent {
     const now = new Date();
     const hour = now.getHours();
     
-    // Daily comprehensive sweep at 2 AM
-    if (hour === 2) {
+    // Comprehensive sweep at 2 AM and 2 PM (every 12 hours)
+    if (hour === 2 || hour === 14) {
       return 'daily';
     }
     
@@ -197,7 +199,7 @@ export class GitHubAgent {
    * Run daily comprehensive sweep: Full coverage analysis
    */
   private async runDailyComprehensiveSweep(): Promise<void> {
-    console.log('Starting daily comprehensive sweep: Full coverage analysis');
+    console.log('Starting comprehensive sweep (runs every 12 hours): Full coverage analysis');
     const startTime = Date.now();
     
     try {
@@ -698,6 +700,7 @@ export class GitHubAgent {
     const url = new URL(request.url);
     const force = url.searchParams.get('force') === 'true';
     const minRepos = parseInt(url.searchParams.get('min_repos') || '10');
+    const isManual = true; // This is always a manual scan from the UI
     
     this.log(`Starting manual comprehensive scan... Force: ${force}, Min repos: ${minRepos}`);
     
@@ -714,7 +717,8 @@ export class GitHubAgent {
     };
     
     try {
-      const result = await this.comprehensiveScan(force, minRepos);
+      // Pass isManual flag to use reduced limits
+      const result = await this.comprehensiveScan(force, minRepos, isManual);
       
       this.scanProgress.endTime = Date.now();
       const duration = this.scanProgress.endTime - this.scanProgress.startTime;
@@ -1037,8 +1041,8 @@ export class GitHubAgent {
   /**
    * Comprehensive repository scanning with tiered approach - Optimized for Paid Cloudflare Plan
    */
-  private async comprehensiveScan(force: boolean = false, minRepos: number = 10): Promise<{ processed: number, analyzed: number, discovered: number }> {
-    this.log(`Starting comprehensive repository scan (Paid Plan Optimized)... Force: ${force}, Min repos: ${minRepos}`);
+  private async comprehensiveScan(force: boolean = false, minRepos: number = 10, isManual: boolean = false): Promise<{ processed: number, analyzed: number, discovered: number }> {
+    this.log(`Starting comprehensive repository scan (Paid Plan Optimized)... Force: ${force}, Min repos: ${minRepos}, Manual: ${isManual}`);
     
     if (this.scanProgress) {
       this.scanProgress.phase = 'starting';
@@ -1067,16 +1071,18 @@ export class GitHubAgent {
           this.scanProgress.phase = 'discovery';
         }
         
-        const repos = await this.scanGitHub();
+        // Use reduced limit for manual scans to avoid subrequest limit
+        const discoveryLimit = isManual ? 200 : 1000;
+        const repos = await this.scanGitHub(Config.github.topics, Config.github.minStars, discoveryLimit);
         discovered = repos.length;
-        this.log(`Discovered ${discovered} new repositories`);
+        this.log(`Discovered ${discovered} new repositories (limit: ${discoveryLimit})`);
       }
       
       // Process each tier with time limits
       if (this.scanProgress) {
         this.scanProgress.phase = 'tier1';
       }
-      const tier1Result = await this.processTier1ReposSimplified(MAX_RUNTIME - (Date.now() - startTime), force, minRepos);
+      const tier1Result = await this.processTier1ReposSimplified(MAX_RUNTIME - (Date.now() - startTime), force, minRepos, isManual);
       processed += tier1Result.processed;
       analyzed += tier1Result.analyzed;
       
@@ -1084,7 +1090,7 @@ export class GitHubAgent {
         if (this.scanProgress) {
           this.scanProgress.phase = 'tier2';
         }
-        const tier2Result = await this.processTier2ReposSimplified(MAX_RUNTIME - (Date.now() - startTime), force, minRepos);
+        const tier2Result = await this.processTier2ReposSimplified(MAX_RUNTIME - (Date.now() - startTime), force, minRepos, isManual);
         processed += tier2Result.processed;
         analyzed += tier2Result.analyzed;
       }
@@ -1093,7 +1099,7 @@ export class GitHubAgent {
         if (this.scanProgress) {
           this.scanProgress.phase = 'tier3';
         }
-        const tier3Result = await this.processTier3Repos(MAX_RUNTIME - (Date.now() - startTime), force, minRepos);
+        const tier3Result = await this.processTier3Repos(MAX_RUNTIME - (Date.now() - startTime), force, minRepos, isManual);
         processed += tier3Result.processed;
       }
       
@@ -1149,8 +1155,8 @@ export class GitHubAgent {
   /**
    * Process Tier 1 repositories (simplified - skip enhanced metrics for now)
    */
-  private async processTier1ReposSimplified(maxRuntime: number, force: boolean = false, minRepos: number = 10): Promise<{ processed: number, analyzed: number }> {
-    this.log(`Processing Tier 1 repositories (simplified)... Force: ${force}`);
+  private async processTier1ReposSimplified(maxRuntime: number, force: boolean = false, minRepos: number = 10, isManual: boolean = false): Promise<{ processed: number, analyzed: number }> {
+    this.log(`Processing Tier 1 repositories (simplified)... Force: ${force}, Manual: ${isManual}`);
     const startTime = Date.now();
     
     try {
@@ -1163,7 +1169,8 @@ export class GitHubAgent {
       
       let processed = 0;
       let analyzed = 0;
-      const MAX_BATCH = force ? Math.max(25, minRepos) : 25; // Paid Plan: Increased from 10 to 25
+      // Use reduced limits for manual scans to avoid subrequest limit
+      const MAX_BATCH = isManual ? 10 : (force ? Math.max(25, minRepos) : 25);
       
       for (const repoId of tier1Repos.slice(0, MAX_BATCH)) {
         if (Date.now() - startTime > maxRuntime) {
@@ -1237,8 +1244,8 @@ export class GitHubAgent {
   /**
    * Process Tier 2 repositories (simplified)
    */
-  private async processTier2ReposSimplified(maxRuntime: number, force: boolean = false, minRepos: number = 10): Promise<{ processed: number, analyzed: number }> {
-    this.log(`Processing Tier 2 repositories (simplified)... Force: ${force}`);
+  private async processTier2ReposSimplified(maxRuntime: number, force: boolean = false, minRepos: number = 10, isManual: boolean = false): Promise<{ processed: number, analyzed: number }> {
+    this.log(`Processing Tier 2 repositories (simplified)... Force: ${force}, Manual: ${isManual}`);
     const startTime = Date.now();
     
     try {
@@ -1251,8 +1258,9 @@ export class GitHubAgent {
       
       let processed = 0;
       let analyzed = 0;
-      const MAX_BATCH = force ? Math.max(50, minRepos) : 50; // Paid Plan: Increased from 20 to 50
-      const ANALYZE_TOP = 10; // Paid Plan: Increased from 5 to 10 Tier 2 repos
+      // Use reduced limits for manual scans to avoid subrequest limit
+      const MAX_BATCH = isManual ? 20 : (force ? Math.max(50, minRepos) : 50);
+      const ANALYZE_TOP = isManual ? 3 : 10; // Reduce analysis count for manual scans
       
       for (let i = 0; i < tier2Repos.length && i < MAX_BATCH; i++) {
         if (Date.now() - startTime > maxRuntime) {
@@ -1330,10 +1338,71 @@ export class GitHubAgent {
   }
 
   /**
+   * Handle batch stop request - stops a running batch
+   */
+  private async handleBatchStop(request: Request): Promise<Response> {
+    const body = await request.json() as any;
+    const { batchId } = body;
+    
+    if (!batchId) {
+      return this.jsonResponse({ error: 'batchId required' }, 400);
+    }
+    
+    console.log(`Stopping batch analysis ${batchId}`);
+    
+    // Get batch progress
+    const batchProgress = await this.state.storage.get(`batch_${batchId}`) as BatchProgress | undefined;
+    
+    if (!batchProgress) {
+      return this.jsonResponse({ 
+        error: 'Batch not found',
+        batchId,
+        status: 'not_found'
+      }, 404);
+    }
+    
+    // Update status to failed/stopped
+    batchProgress.status = 'failed';
+    await this.state.storage.put(`batch_${batchId}`, batchProgress);
+    
+    return this.jsonResponse({
+      message: 'Batch analysis stopped',
+      batchId,
+      stoppedAt: {
+        completed: batchProgress.completed,
+        failed: batchProgress.failed,
+        total: batchProgress.total,
+        currentRepository: batchProgress.currentRepository
+      }
+    });
+  }
+
+  /**
+   * Handle batch clear request - clears all batch data
+   */
+  private async handleBatchClear(): Promise<Response> {
+    console.log('Clearing all batch data');
+    
+    // Get all keys that start with "batch_"
+    const allKeys = await this.state.storage.list({ prefix: 'batch_' });
+    
+    let clearedCount = 0;
+    for (const [key, value] of allKeys) {
+      await this.state.storage.delete(key);
+      clearedCount++;
+    }
+    
+    return this.jsonResponse({
+      message: 'All batch data cleared',
+      batchesCleared: clearedCount
+    });
+  }
+
+  /**
    * Process Tier 3 repositories (minimal scan)
    */
-  private async processTier3Repos(maxRuntime: number, force: boolean = false, minRepos: number = 10): Promise<{ processed: number }> {
-    this.log(`Processing Tier 3 repositories... Force: ${force}`);
+  private async processTier3Repos(maxRuntime: number, force: boolean = false, minRepos: number = 10, isManual: boolean = false): Promise<{ processed: number }> {
+    this.log(`Processing Tier 3 repositories... Force: ${force}, Manual: ${isManual}`);
     const startTime = Date.now();
     
     try {
@@ -1345,7 +1414,8 @@ export class GitHubAgent {
       }
       
       let processed = 0;
-      const MAX_BATCH = force ? Math.max(100, minRepos) : 100; // Paid Plan: Increased from 30 to 100
+      // Use reduced limits for manual scans to avoid subrequest limit
+      const MAX_BATCH = isManual ? 30 : (force ? Math.max(100, minRepos) : 100);
       
       // Batch process for efficiency
       const batch = tier3Repos.slice(0, MAX_BATCH);

@@ -42,8 +42,8 @@ vars = { ENVIRONMENT = "development" }
 # Cron triggers for automated scanning
 [triggers]
 crons = [
-  "0 * * * *",    # Every hour: Comprehensive scan + Batch analysis
-  "0 2 * * *"     # Daily at 2 AM: Full comprehensive sweep
+  "0 * * * *",      # Every hour: Comprehensive scan + Batch analysis
+  "0 2,14 * * *"    # Twice daily at 2 AM and 2 PM: Full comprehensive sweep
 ]
 
 # Observability configuration

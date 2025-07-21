@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Loader2, AlertCircle, StopCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface BatchProgressProps {
@@ -21,6 +21,7 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [status, setStatus] = useState<'idle' | 'running' | 'completed' | 'failed' | 'not_found'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
 
   useEffect(() => {
     // If no batchId, set status to idle
@@ -110,6 +111,22 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
   const progressPercentage = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
   const elapsedTime = Math.round((Date.now() - progress.startTime) / 1000);
 
+  const handleStopBatch = async () => {
+    if (!batchId || isStopping) return;
+    
+    setIsStopping(true);
+    try {
+      await api.stopBatchAnalysis(batchId);
+      setStatus('failed');
+      onError('Batch analysis stopped by user');
+    } catch (err) {
+      console.error('Error stopping batch:', err);
+      setError(err instanceof Error ? err.message : 'Failed to stop batch');
+    } finally {
+      setIsStopping(false);
+    }
+  };
+
   return (
     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
         {/* Status Header */}
@@ -191,6 +208,29 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
                 return <span>Estimated completion: Less than 1m remaining</span>;
               }
             })()}
+          </div>
+        )}
+
+        {/* Stop Analysis Button */}
+        {status === 'running' && (
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={handleStopBatch}
+              disabled={isStopping}
+              className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg transition-colors duration-200"
+            >
+              {isStopping ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Stopping...</span>
+                </>
+              ) : (
+                <>
+                  <StopCircle className="h-4 w-4" />
+                  <span>Stop Analysis</span>
+                </>
+              )}
+            </button>
           </div>
         )}
     </div>

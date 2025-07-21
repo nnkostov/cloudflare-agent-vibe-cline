@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Activity, TrendingUp, AlertTriangle, Database } from 'lucide-react';
 import { api, formatNumber } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import SystemPerformanceViz from '@/components/overview/SystemPerformanceViz';
 import ElectricStatsGrid from '@/components/overview/ElectricStatsGrid';
 import ElectricTierSummary from '@/components/overview/ElectricTierSummary';
@@ -104,39 +104,6 @@ export default function Overview() {
           statusTierDistribution={statusTierDistribution}
           reportTierSummary={report?.tier_summary}
         />
-      )}
-
-      {/* Recent High Growth Repos */}
-      {report?.high_growth_repos_with_metrics && report.high_growth_repos_with_metrics.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>High Growth Repositories</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {report.high_growth_repos_with_metrics.slice(0, 5).map((repo: any) => (
-                <div key={repo.id} className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">
-                      {repo.full_name}
-                    </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {repo.description || 'No description'}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-gray-900 dark:text-white">
-                      ⭐ {formatNumber(repo.stars)}
-                    </div>
-                    <div className="text-xs text-green-600 dark:text-green-400">
-                      +{repo.growth_rate?.toFixed(1)}%
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       )}
 
       {/* Futuristic System Performance Visualization */}

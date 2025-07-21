@@ -149,9 +149,53 @@ class ApiClient {
       date: string;
       tier_summary: any;
       high_growth_repos_with_metrics: any[];
-      recent_alerts: any[];
+      investment_opportunities?: Array<{
+        repository: {
+          id: string;
+          full_name: string;
+          description: string | null;
+          stars: number;
+          language: string | null;
+          growth_rate: number;
+        };
+        score: number;
+        score_level: 'high' | 'medium' | 'low';
+        has_analysis: boolean;
+      }>;
+      activity_insights?: {
+        most_active_repos: Array<{
+          id: string;
+          full_name: string;
+          pushed_at: string;
+          fork_ratio: number;
+          open_issues: number;
+          contributors: number;
+          hours_since_update: number;
+        }>;
+        use_case_distribution: Array<{
+          category: string;
+          count: number;
+          percentage: number;
+        }>;
+        momentum_indicators: {
+          accelerating: number;
+          growing: number;
+          steady: number;
+          cooling: number;
+        };
+        community_metrics: {
+          large_teams: number;
+          growing_teams: number;
+          small_teams: number;
+        };
+      };
       system_metrics: any;
       total_monitored_repos: number;
+      report_metadata?: {
+        generated_at: string;
+        data_source: string;
+        version: string;
+      };
     }>('/reports/enhanced');
   }
 
@@ -233,6 +277,32 @@ class ApiClient {
       };
       error?: string;
     }>(`/analyze/batch/status?batchId=${encodeURIComponent(batchId)}`);
+  }
+
+  // Stop batch analysis
+  stopBatchAnalysis = async (batchId: string) => {
+    return this.request<{
+      message: string;
+      batchId: string;
+      stoppedAt?: {
+        completed: number;
+        failed: number;
+        total: number;
+        currentRepository: string | null;
+      };
+    }>(`/analyze/batch/stop?batchId=${encodeURIComponent(batchId)}`, {
+      method: 'POST',
+    });
+  }
+
+  // Clear all batch data
+  clearBatchData = async () => {
+    return this.request<{
+      message: string;
+      batchesCleared: number;
+    }>('/analyze/batch/clear', {
+      method: 'POST',
+    });
   }
 
   // Analysis statistics

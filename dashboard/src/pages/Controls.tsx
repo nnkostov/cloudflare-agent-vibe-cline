@@ -368,10 +368,10 @@ export default function Controls() {
             <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
               <div className="flex items-center mb-2">
                 <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 mr-2" />
-                <h4 className="font-semibold text-purple-900 dark:text-purple-100">Daily Deep Sweep</h4>
+                <h4 className="font-semibold text-purple-900 dark:text-purple-100">Comprehensive Sweep</h4>
               </div>
               <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
-                Every day at 2:00 AM
+                Twice daily at 2:00 AM and 2:00 PM
               </p>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">

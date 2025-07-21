@@ -184,6 +184,8 @@ class WorkerService extends BaseService {
       '/logs/critical-alerts': () => this.handleCriticalAlerts(request),
       '/analyze/batch': () => this.handleBatchAnalyze(request),
       '/analyze/batch/status': () => this.handleBatchStatus(request),
+      '/analyze/batch/stop': () => this.handleBatchStop(request),
+      '/analyze/batch/clear': () => this.handleBatchClear(),
       '/analysis/stats': () => this.handleAnalysisStats(),
       '/worker-metrics': () => this.handleWorkerMetrics(),
       '/version': () => this.handleVersion(),
@@ -430,58 +432,263 @@ class WorkerService extends BaseService {
     return this.performanceMonitor.monitor('handleEnhancedReport', async () => {
       return this.handleError(async () => {
         const { StorageService } = await import('./services/storage');
-        const { StorageEnhancedService } = await import('./services/storage-enhanced');
+        const { DiagnosticsService } = await import('./services/diagnostics');
         const storage = new StorageService(this.env);
-        const storageEnhanced = new StorageEnhancedService(this.env);
+        const diagnostics = new DiagnosticsService(this.env);
         
-        // Get tier summaries
-        const [tier1, tier2, tier3] = await Promise.all([
-          storageEnhanced.getReposByTier(1, 10),
-          storageEnhanced.getReposByTier(2, 10),
-          storageEnhanced.getReposByTier(3, 10),
+        // Get accurate tier distribution using DiagnosticsService
+        const tierDistribution = await diagnostics.getTierDistribution();
+        
+        // Get real system metrics from the database
+        const [totalAnalyses, totalRepos, recentActivity] = await Promise.all([
+          // Count total analyses
+          this.env.DB.prepare(`
+            SELECT COUNT(*) as count FROM analyses
+          `).first(),
+          // Count total active repositories
+          this.env.DB.prepare(`
+            SELECT COUNT(*) as count FROM repositories 
+            WHERE is_archived = 0 AND is_fork = 0
+          `).first(),
+          // Get activity from last 24 hours
+          this.env.DB.prepare(`
+            SELECT 
+              COUNT(DISTINCT a.id) as analyses_24h,
+              COUNT(DISTINCT r.id) as repos_scanned_24h
+            FROM analyses a
+            LEFT JOIN repositories r ON a.repo_id = r.id
+            WHERE a.created_at > datetime('now', '-24 hours')
+          `).first()
         ]);
         
-        // Get high-growth repos with enhanced metrics
-        const highGrowthRepos = await storage.getHighGrowthRepos(7, 100);
+        // Get high-growth repos with better parameters
+        const highGrowthRepos = await storage.getHighGrowthRepos(30, 20);
+        
+        // Calculate investment scores for top repositories
+        const calculateInvestmentScore = (repo: any) => {
+          // Simple weighted scoring (0-100)
+          const starScore = Math.min(100, (repo.stars / 10000) * 100) * 0.3; // 30% weight
+          const growthScore = Math.min(100, ((repo as any).growth_percent || 0) * 2) * 0.4; // 40% weight
+          
+          // Recent activity score based on pushed_at
+          const daysSinceUpdate = repo.pushed_at ? 
+            (Date.now() - new Date(repo.pushed_at).getTime()) / (1000 * 60 * 60 * 24) : 365;
+          const activityScore = Math.max(0, 100 - (daysSinceUpdate * 2)) * 0.3; // 30% weight
+          
+          return Math.round(starScore + growthScore + activityScore);
+        };
+        
+        // Get simple metrics for top repos
         const topReposWithMetrics = await Promise.all(
-          highGrowthRepos.slice(0, 5).map(async (repo) => {
-            const metrics = await storageEnhanced.getComprehensiveMetrics(repo.id);
+          highGrowthRepos.slice(0, 10).map(async (repo) => {
             const analysis = await storage.getLatestAnalysis(repo.id);
+            const investmentScore = calculateInvestmentScore(repo);
+            
             return {
-              repository: repo,
-              metrics: {
-                commits: metrics.commits.length,
-                releases: metrics.releases.length,
-                pullRequests: metrics.pullRequests?.total_prs || 0,
-                issues: metrics.issues?.total_issues || 0,
-                starGrowth: metrics.stars.length > 0 ? 
-                  metrics.stars[0].daily_growth : 0,
-                forkActivity: metrics.forks?.active_forks || 0,
+              repository: {
+                id: repo.id,
+                full_name: repo.full_name,
+                description: repo.description,
+                stars: repo.stars,
+                forks: repo.forks,
+                language: repo.language,
+                topics: repo.topics,
+                growth_rate: (repo as any).growth_percent || 0,
+                investment_score: investmentScore
               },
               analysis: analysis ? {
                 investment_score: analysis.scores.investment,
                 recommendation: analysis.recommendation,
+                analyzed_at: analysis.metadata.timestamp
               } : null
             };
           })
         );
         
-        const [recentAlerts, stats] = await Promise.all([
-          storage.getRecentAlerts(10),
-          storage.getDailyStats()
-        ]);
+        // Get top 5 investment opportunities (highest scoring repos)
+        const investmentOpportunities = topReposWithMetrics
+          .sort((a, b) => b.repository.investment_score - a.repository.investment_score)
+          .slice(0, 5)
+          .map(item => ({
+            repository: {
+              id: item.repository.id,
+              full_name: item.repository.full_name,
+              description: item.repository.description,
+              stars: item.repository.stars,
+              language: item.repository.language,
+              growth_rate: item.repository.growth_rate
+            },
+            score: item.repository.investment_score,
+            score_level: item.repository.investment_score >= 80 ? 'high' : 
+                        item.repository.investment_score >= 60 ? 'medium' : 'low',
+            has_analysis: item.analysis !== null
+          }));
+        
+        // Build tier summary with proper structure
+        const tier_summary: any = {
+          tier1: {
+            count: tierDistribution.tier1,
+            percentage: Math.round((tierDistribution.tier1 / (tierDistribution.tier1 + tierDistribution.tier2 + tierDistribution.tier3)) * 100) || 0
+          },
+          tier2: {
+            count: tierDistribution.tier2,
+            percentage: Math.round((tierDistribution.tier2 / (tierDistribution.tier1 + tierDistribution.tier2 + tierDistribution.tier3)) * 100) || 0
+          },
+          tier3: {
+            count: tierDistribution.tier3,
+            percentage: Math.round((tierDistribution.tier3 / (tierDistribution.tier1 + tierDistribution.tier2 + tierDistribution.tier3)) * 100) || 0
+          }
+        };
+        
+        // Calculate real system metrics
+        const system_metrics = {
+          total_analyses: (totalAnalyses as any)?.count || 0,
+          analyses_last_24h: (recentActivity as any)?.analyses_24h || 0,
+          repos_scanned_24h: (recentActivity as any)?.repos_scanned_24h || 0,
+          total_repositories: (totalRepos as any)?.count || 0,
+          data_freshness: 'live', // Indicates this is real-time data
+          last_updated: new Date().toISOString()
+        };
+        
+        // Get Activity & Momentum Insights
+        
+        // 1. Most Active Repositories (by recent push date)
+        const mostActiveRepos = await this.env.DB.prepare(`
+          SELECT 
+            r.id, r.full_name, r.stars, r.forks, r.open_issues, r.pushed_at,
+            rm.contributors
+          FROM repositories r
+          LEFT JOIN (
+            SELECT repo_id, MAX(contributors) as contributors
+            FROM repo_metrics
+            GROUP BY repo_id
+          ) rm ON r.id = rm.repo_id
+          WHERE r.is_archived = 0 AND r.is_fork = 0
+          ORDER BY r.pushed_at DESC
+          LIMIT 5
+        `).all();
+        
+        const activityPatterns = mostActiveRepos.results.map((repo: any) => ({
+          id: repo.id,
+          full_name: repo.full_name,
+          pushed_at: repo.pushed_at,
+          fork_ratio: repo.stars > 0 ? (repo.forks / repo.stars).toFixed(3) : 0,
+          open_issues: repo.open_issues,
+          contributors: repo.contributors || 0,
+          hours_since_update: Math.round((Date.now() - new Date(repo.pushed_at).getTime()) / (1000 * 60 * 60))
+        }));
+        
+        // 2. AI Use Case Categories (based on topics)
+        const topicCategories = await this.env.DB.prepare(`
+          SELECT 
+            CASE 
+              WHEN topics LIKE '%code%' OR topics LIKE '%development%' OR topics LIKE '%ide%' THEN 'Code/Dev Tools'
+              WHEN topics LIKE '%chatbot%' OR topics LIKE '%assistant%' OR topics LIKE '%conversation%' THEN 'Chatbots'
+              WHEN topics LIKE '%data%' OR topics LIKE '%analytics%' OR topics LIKE '%analysis%' THEN 'Data/Analytics'
+              WHEN topics LIKE '%generation%' OR topics LIKE '%image%' OR topics LIKE '%text%' THEN 'Generation'
+              WHEN topics LIKE '%ai%' OR topics LIKE '%ml%' OR topics LIKE '%llm%' THEN 'General AI'
+              ELSE 'Other'
+            END as category,
+            COUNT(*) as count
+          FROM repositories
+          WHERE is_archived = 0 AND is_fork = 0
+            AND (topics LIKE '%ai%' OR topics LIKE '%ml%' OR topics LIKE '%llm%' 
+                 OR topics LIKE '%code%' OR topics LIKE '%chatbot%' OR topics LIKE '%data%')
+          GROUP BY category
+          ORDER BY count DESC
+        `).all();
+        
+        const totalCategorized = topicCategories.results.reduce((sum: number, cat: any) => sum + cat.count, 0);
+        const useCaseDistribution = topicCategories.results.map((cat: any) => ({
+          category: cat.category,
+          count: cat.count,
+          percentage: Math.round((cat.count / totalCategorized) * 100)
+        }));
+        
+        // 3. Momentum Indicators (based on growth)
+        const momentumStats = await this.env.DB.prepare(`
+          SELECT 
+            CASE 
+              WHEN growth_percent > 20 THEN 'accelerating'
+              WHEN growth_percent >= 5 AND growth_percent <= 20 THEN 'growing'
+              WHEN growth_percent >= 0 AND growth_percent < 5 THEN 'steady'
+              ELSE 'cooling'
+            END as momentum,
+            COUNT(*) as count
+          FROM (
+            SELECT r.id,
+              CASE 
+                WHEN rm_old.stars > 0 THEN ((rm_new.stars - rm_old.stars) * 100.0 / rm_old.stars)
+                ELSE 0
+              END as growth_percent
+            FROM repositories r
+            LEFT JOIN repo_metrics rm_new ON r.id = rm_new.repo_id
+              AND rm_new.recorded_at = (SELECT MAX(recorded_at) FROM repo_metrics WHERE repo_id = r.id)
+            LEFT JOIN repo_metrics rm_old ON r.id = rm_old.repo_id
+              AND rm_old.recorded_at = (SELECT MAX(recorded_at) FROM repo_metrics WHERE repo_id = r.id AND recorded_at < datetime('now', '-30 days'))
+            WHERE r.is_archived = 0 AND r.is_fork = 0
+          )
+          GROUP BY momentum
+        `).all();
+        
+        const momentumIndicators = {
+          accelerating: 0,
+          growing: 0,
+          steady: 0,
+          cooling: 0
+        };
+        
+        momentumStats.results.forEach((stat: any) => {
+          momentumIndicators[stat.momentum as keyof typeof momentumIndicators] = stat.count;
+        });
+        
+        // 4. Community Health Metrics
+        const communityHealth = await this.env.DB.prepare(`
+          SELECT 
+            CASE 
+              WHEN contributors >= 50 THEN 'large_teams'
+              WHEN contributors >= 10 AND contributors < 50 THEN 'growing_teams'
+              ELSE 'small_teams'
+            END as team_size,
+            COUNT(*) as count
+          FROM (
+            SELECT r.id, MAX(rm.contributors) as contributors
+            FROM repositories r
+            LEFT JOIN repo_metrics rm ON r.id = rm.repo_id
+            WHERE r.is_archived = 0 AND r.is_fork = 0
+            GROUP BY r.id
+          )
+          GROUP BY team_size
+        `).all();
+        
+        const communityMetrics = {
+          large_teams: 0,
+          growing_teams: 0,
+          small_teams: 0
+        };
+        
+        communityHealth.results.forEach((metric: any) => {
+          communityMetrics[metric.team_size as keyof typeof communityMetrics] = metric.count;
+        });
         
         return this.jsonResponse({
           date: new Date().toISOString(),
-          tier_summary: {
-            tier1: { count: tier1.length, repos: tier1.slice(0, 5) },
-            tier2: { count: tier2.length, repos: tier2.slice(0, 5) },
-            tier3: { count: tier3.length, repos: tier3.slice(0, 5) },
-          },
+          tier_summary,
           high_growth_repos_with_metrics: topReposWithMetrics,
-          recent_alerts: recentAlerts.slice(0, 5),
-          system_metrics: stats,
-          total_monitored_repos: tier1.length + tier2.length + tier3.length,
+          investment_opportunities: investmentOpportunities,
+          activity_insights: {
+            most_active_repos: activityPatterns,
+            use_case_distribution: useCaseDistribution,
+            momentum_indicators: momentumIndicators,
+            community_metrics: communityMetrics
+          },
+          system_metrics,
+          total_monitored_repos: (totalRepos as any)?.count || 0,
+          report_metadata: {
+            generated_at: new Date().toISOString(),
+            data_source: 'live_database',
+            version: '2.2'
+          }
         });
       }, 'generate enhanced report');
     });
@@ -1089,6 +1296,75 @@ class WorkerService extends BaseService {
       const statusData = await statusResponse.json() as any;
       return this.jsonResponse(statusData);
     }, 'get batch analysis status');
+  }
+
+  /**
+   * Handle batch stop request - stops a running batch analysis
+   */
+  private async handleBatchStop(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const batchId = url.searchParams.get('batchId');
+      
+      if (!batchId) {
+        return this.jsonResponse({ error: 'batchId parameter required' }, 400);
+      }
+      
+      // Forward to Durable Object to stop the batch
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      const stopResponse = await agent.fetch(new Request('http://internal/batch/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId })
+      }));
+      
+      if (!stopResponse.ok) {
+        const error = await stopResponse.text();
+        return this.jsonResponse({ 
+          error: 'Failed to stop batch', 
+          details: error 
+        }, stopResponse.status);
+      }
+      
+      const result = await stopResponse.json() as any;
+      return this.jsonResponse({
+        message: 'Batch analysis stopped',
+        batchId,
+        ...result
+      });
+    }, 'stop batch analysis');
+  }
+
+  /**
+   * Handle batch clear request - clears all batch data
+   */
+  private async handleBatchClear(): Promise<Response> {
+    return this.handleError(async () => {
+      // Forward to Durable Object to clear all batches
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      const clearResponse = await agent.fetch(new Request('http://internal/batch/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }));
+      
+      if (!clearResponse.ok) {
+        const error = await clearResponse.text();
+        return this.jsonResponse({ 
+          error: 'Failed to clear batches', 
+          details: error 
+        }, clearResponse.status);
+      }
+      
+      const result = await clearResponse.json() as any;
+      return this.jsonResponse({
+        message: 'All batch data cleared',
+        ...result
+      });
+    }, 'clear batch data');
   }
 
   /**
