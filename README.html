@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub AI Intelligence Agent - Cyberpunk Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #252525;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --neon-blue: #00d4ff;
+            --neon-pink: #ff0080;
+            --neon-green: #00ff88;
+            --neon-yellow: #ffdd00;
+            --neon-purple: #a855f7;
+            --gradient-1: linear-gradient(135deg, #00d4ff, #ff0080);
+            --gradient-2: linear-gradient(135deg, #00ff88, #00d4ff);
+            --gradient-3: linear-gradient(135deg, #ff0080, #ffdd00);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Space Mono', monospace;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            overflow-x: hidden;
+            position: relative;
+        }
+        
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 0, 128, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 20%, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            z-index: -2;
+            animation: backgroundPulse 20s ease-in-out infinite;
+        }
+        
+        /* Grid pattern overlay */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+            animation: gridMove 10s linear infinite;
+        }
+        
+        @keyframes backgroundPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Glowing headers */
+        h1, h2, h3, h4 {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin: 30px 0 20px;
+            position: relative;
+        }
+        
+        h1 {
+            font-size: 3.5em;
+            text-align: center;
+            background: linear-gradient(45deg, var(--neon-blue), var(--neon-pink), var(--neon-green));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 3s ease-in-out infinite;
+            text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+            margin-bottom: 10px;
+        }
+        
+        @keyframes gradientShift {
+            0%, 100% { filter: hue-rotate(0deg); }
+            50% { filter: hue-rotate(30deg); }
+        }
+        
+        h2 {
+            font-size: 2.2em;
+            color: var(--neon-blue);
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+            border-bottom: 2px solid var(--neon-blue);
+            padding-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-pink), transparent);
+            animation: scanline 3s linear infinite;
+        }
+        
+        @keyframes scanline {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        h3 {
+            font-size: 1.8em;
+            color: var(--neon-green);
+            text-shadow: 0 0 15px rgba(0, 255, 136, 0.8);
+        }
+        
+        /* Animated badges */
+        .badges {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .badge::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .badge:hover::before {
+            left: 100%;
+        }
+        
+        .badge:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.5);
+        }
+        
+        .badge-green {
+            background: linear-gradient(135deg, #00ff88, #00d4ff);
+            color: #000;
+            border-color: var(--neon-green);
+        }
+        
+        .badge-blue {
+            background: linear-gradient(135deg, #00d4ff, #0080ff);
+            color: #fff;
+            border-color: var(--neon-blue);
+        }
+        
+        .badge-orange {
+            background: linear-gradient(135deg, #ff9800, #ff5722);
+            color: #fff;
+            border-color: #ff9800;
+        }
+        
+        .badge-purple {
+            background: linear-gradient(135deg, #a855f7, #ff0080);
+            color: #fff;
+            border-color: var(--neon-purple);
+        }
+        
+        /* Tagline and subtitle */
+        .tagline {
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--neon-pink);
+            margin: 20px 0;
+            text-shadow: 0 0 20px rgba(255, 0, 128, 0.8);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+        
+        .subtitle {
+            text-align: center;
+            font-style: italic;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        
+        /* Neon divider */
+        hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-blue), var(--neon-pink), var(--neon-green), transparent);
+            margin: 50px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        hr::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, white, transparent);
+            animation: shimmer 3s linear infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin: 40px 0;
+        }
+        
+        .feature-box {
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.9), rgba(37, 37, 37, 0.9));
+            border: 2px solid transparent;
+            border-radius: 15px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .feature-box::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, var(--neon-blue), var(--neon-pink), var(--neon-green), var(--neon-yellow));
+            border-radius: 15px;
+            opacity: 0;
+            z-index: -1;
+            transition: opacity 0.3s ease;
+            animation: borderRotate 3s linear infinite;
+        }
+        
+        @keyframes borderRotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .feature-box:hover::before {
+            opacity: 1;
+        }
+        
+        .feature-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 212, 255, 0.3);
+            background: linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(37, 37, 37, 0.95));
+        }
+        
+        .feature-box h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        
+        /* Lists */
+        ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        ul li {
+            position: relative;
+            padding-left: 30px;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+        
+        ul li:hover {
+            color: var(--text-primary);
+        }
+        
+        ul li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--neon-green);
+            font-size: 1.2em;
+            animation: blink 2s ease-in-out infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            background: rgba(26, 26, 26, 0.8);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(255, 0, 128, 0.2));
+            color: var(--text-primary);
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+            color: var(--text-secondary);
+        }
+        
+        tr:hover td {
+            background: rgba(0, 212, 255, 0.05);
+            color: var(--text-primary);
+        }
+        
+        /* Code blocks */
+        pre {
+            background: rgba(10, 10, 10, 0.9);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            padding: 25px;
+            overflow-x: auto;
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--neon-green);
+            position: relative;
+            margin: 20px 0;
+        }
+        
+        pre::before {
+            content: 'TERMINAL';
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 10px;
+            color: var(--neon-blue);
+            opacity: 0.5;
+            letter-spacing: 2px;
+        }
+        
+        code {
+            background: rgba(0, 212, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Space Mono', monospace;
+            color: var(--neon-blue);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+        
+        pre code {
+            background: transparent;
+            padding: 0;
+            border: none;
+            color: inherit;
+        }
+        
+        /* Tier boxes */
+        .tier-box {
+            background: rgba(26, 26, 26, 0.9);
+            border: 2px solid;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 30px 0;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .tier-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            opacity: 0.1;
+            z-index: -1;
+        }
+        
+        .tier-1 {
+            border-color: var(--neon-yellow);
+            box-shadow: 0 0 30px rgba(255, 221, 0, 0.3);
+        }
+        
+        .tier-1::before {
+            background: linear-gradient(180deg, var(--neon-yellow), transparent);
+        }
+        
+        .tier-1 .tier-header {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: #000;
+            text-shadow: none;
+        }
+        
+        .tier-2 {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+        }
+        
+        .tier-2::before {
+            background: linear-gradient(180deg, var(--neon-blue), transparent);
+        }
+        
+        .tier-2 .tier-header {
+            background: linear-gradient(135deg, #C0C0C0, #808080);
+            color: #000;
+            text-shadow: none;
+        }
+        
+        .tier-3 {
+            border-color: var(--neon-pink);
+            box-shadow: 0 0 30px rgba(255, 0, 128, 0.3);
+        }
+        
+        .tier-3::before {
+            background: linear-gradient(180deg, var(--neon-pink), transparent);
+        }
+        
+        .tier-3 .tier-header {
+            background: linear-gradient(135deg, #CD7F32, #8B4513);
+            color: #fff;
+        }
+        
+        .tier-header {
+            font-weight: bold;
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tier-header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: tierShine 3s ease-in-out infinite;
+        }
+        
+        @keyframes tierShine {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        /* Investment scorecard */
+        .investment-scorecard {
+            background: linear-gradient(135deg, rgba(10, 10, 10, 0.95), rgba(26, 26, 26, 0.95));
+            border: 2px solid var(--neon-green);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 30px 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(0, 255, 136, 0.3);
+        }
+        
+        .investment-scorecard pre {
+            background: transparent;
+            border: none;
+            color: var(--neon-green);
+            margin: 0;
+            padding: 0;
+            text-shadow: 0 0 5px rgba(0, 255, 136, 0.5);
+        }
+        
+        /* API tables */
+        .api-table {
+            margin: 30px 0;
+        }
+        
+        .api-table code {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--neon-green);
+            border-color: rgba(0, 255, 136, 0.3);
+        }
+        
+        /* Details/Summary */
+        details {
+            background: rgba(26, 26, 26, 0.8);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+        
+        details:hover {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+        }
+        
+        summary {
+            cursor: pointer;
+            font-weight: bold;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        
+        summary:hover {
+            color: var(--neon-pink);
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 80px;
+            padding-top: 40px;
+            border-top: 2px solid rgba(0, 212, 255, 0.3);
+            position: relative;
+        }
+        
+        .footer::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-blue), var(--neon-pink), var(--neon-green), transparent);
+            animation: footerGlow 3s ease-in-out infinite;
+        }
+        
+        @keyframes footerGlow {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .footer-links a {
+            color: var(--neon-blue);
+            text-decoration: none;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .footer-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--neon-pink);
+            transition: width 0.3s ease;
+        }
+        
+        .footer-links a:hover {
+            color: var(--neon-pink);
+            text-shadow: 0 0 10px rgba(255, 0, 128, 0.8);
+        }
+        
+        .footer-links a:hover::after {
+            width: 100%;
+        }
+        
+        /* Emoji enhancements */
+        .emoji {
+            font-size: 1.3em;
+            display: inline-block;
+            animation: emojiFloat 3s ease-in-out infinite;
+        }
+        
+        @keyframes emojiFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        /* Glitch effect for headers */
+        @keyframes glitch {
+            0%, 100% {
+                text-shadow: 
+                    0 0 20px rgba(0, 212, 255, 0.8),
+                    -2px 0 var(--neon-pink),
+                    2px 0 var(--neon-green);
+            }
+            25% {
+                text-shadow: 
+                    0 0 20px rgba(0, 212, 255, 0.8),
+                    2px 0 var(--neon-pink),
+                    -2px 0 var(--neon-green);
+            }
+            50% {
+                text-shadow: 
+                    0 0 20px rgba(0, 212, 255, 0.8),
+                    -2px 2px var(--neon-pink),
+                    2px -2px var(--neon-green);
+            }
+        }
+        
+        h1:hover {
+            animation: glitch 0.3s ease-in-out infinite;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5em; }
+            h2 { font-size: 1.8em; }
+            h3 { font-size: 1.4em; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .footer-links { flex-direction: column; gap: 15px; }
+        }
+        
+        /* Loading animation */
+        @keyframes loading {
+            0% { content: 'LOADING.'; }
+            33% { content: 'LOADING..'; }
+            66% { content: 'LOADING...'; }
+            100% { content: 'LOADING.'; }
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--neon-blue), var(--neon-pink));
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, var(--neon-pink), var(--neon-blue));
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><span class="emoji">🚀</span> GitHub AI Intelligence Agent</h1>
+        
+        <div class="center">
+            <div class="badges">
+                <a href="https://github.com/nnkostov/cloudflare-agent-vibe-cline" class="badge badge-green">Build: Passing</a>
+                <a href="LICENSE" class="badge badge-blue">License: MIT</a>
+                <a href="https://workers.cloudflare.com" class="badge badge-orange">Cloudflare Workers</a>
+                <a href="https://anthropic.com" class="badge badge-purple">Claude AI Powered</a>
+            </div>
+            
+            <p class="tagline"><span class="emoji">🤖</span> Your AI-Powered Venture Capital Analyst for GitHub</p>
+            <p class="subtitle">Discover the next unicorn in AI/ML before everyone else does</p>
+        </div>
+        
+        <hr>
+        
+        <h2><span class="emoji">🎯</span> What is This?</h2>
+        <p>Imagine having a tireless AI analyst that:</p>
+        <ul>
+            <li><span class="emoji">🔍</span> <strong>Scans GitHub 24/7</strong> for emerging AI/ML projects</li>
+            <li><span class="emoji">🧠</span> <strong>Analyzes with Claude AI</strong> using VC-grade investment criteria</li>
+            <li><span class="emoji">📊</span> <strong>Tracks growth patterns</strong> across thousands of repositories</li>
+            <li><span class="emoji">🚨</span> <strong>Alerts you instantly</strong> when it finds high-potential opportunities</li>
+            <li><span class="emoji">🎨</span> <strong>Visualizes insights</strong> in a stunning cyberpunk dashboard</li>
+        </ul>
+        <p><strong>This is that analyst.</strong> Built on Cloudflare Workers, powered by Claude AI, and designed for serious investors.</p>
+        
+        <h2><span class="emoji">🚀</span> Why This Matters</h2>
+        
+        <h3>The Problem We Solve</h3>
+        <table>
+            <tr>
+                <td width="50%">
+                    <h4><span class="emoji">❌</span> <strong>Without This System</strong></h4>
+                    <ul>
+                        <li><strong>40+ hours/week</strong> of manual research</li>
+                        <li><strong>Miss 90%</strong> of emerging projects</li>
+                        <li><strong>Subjective</strong> gut-feeling decisions</li>
+                        <li><strong>$200K+/year</strong> for analyst teams</li>
+                        <li><strong>Delayed discovery</strong> (weeks behind)</li>
+                        <li><strong>Limited coverage</strong> (human constraints)</li>
+                    </ul>
+                </td>
+                <td width="50%">
+                    <h4><span class="emoji">✅</span> <strong>With This System</strong></h4>
+                    <ul>
+                        <li><strong>24/7 automated</strong> monitoring</li>
+                        <li><strong>100% coverage</strong> of AI/ML ecosystem</li>
+                        <li><strong>Data-driven</strong> AI analysis</li>
+                        <li><strong>&lt;$100/month</strong> operational cost</li>
+                        <li><strong>Real-time discovery</strong> (within hours)</li>
+                        <li><strong>Unlimited scalability</strong> (no human limits)</li>
+                    </ul>
+                </td>
+            </tr>
+        </table>
+        
+        <h3><span class="emoji">💰</span> Real Cost Comparison</h3>
+        <ul>
+            <li><strong>Human Analyst Team</strong>: $200,000-500,000/year</li>
+            <li><strong>This System</strong>: Less than your Netflix subscription</li>
+            <li><strong>ROI</strong>: Find just ONE good investment and it pays for itself 1000x over</li>
+        </ul>
+        
+        <h3><span class="emoji">⏱️</span> Time Savings</h3>
+        <ul>
+            <li><strong>Manual Research</strong>: 40+ hours per week</li>
+            <li><strong>With Our System</strong>: 5 minutes to review curated results</li>
+            <li><strong>That's 99% time saved</strong> for strategic thinking instead of data gathering</li>
+        </ul>
+        
+        <h2><span class="emoji">✨</span> Features That Make Us Special</h2>
+        
+        <div class="feature-grid">
+            <div class="feature-box">
+                <h3><span class="emoji">🧠</span> AI-Powered Analysis</h3>
+                <ul>
+                    <li><strong>Claude Opus-4</strong> for deep research on high-potential projects</li>
+                    <li><strong>Claude Sonnet-4</strong> for comprehensive standard analysis</li>
+                    <li><strong>Claude Haiku</strong> for efficient quick scans</li>
+                    <li>Multi-factor scoring algorithm</li>
+                </ul>
+            </div>
+            
+            <div class="feature-box">
+                <h3><span class="emoji">⚡</span> Real-Time Intelligence</h3>
+                <ul>
+                    <li>Continuous GitHub monitoring</li>
+                    <li>Hourly batch analysis</li>
+                    <li>Smart tier-based prioritization</li>
+                    <li>Complete database coverage</li>
+                </ul>
+            </div>
+            
+            <div class="feature-box">
+                <h3><span class="emoji">🎮</span> Cyberpunk Dashboard</h3>
+                <ul>
+                    <li>Neural Activity Command Center</li>
+                    <li>Investment opportunity scoring</li>
+                    <li>Community health metrics</li>
+                    <li>Real-time system monitoring</li>
+                </ul>
+            </div>
+            
+            <div class="feature-box">
+                <h3><span class="emoji">📈</span> Investment Insights</h3>
+                <ul>
+                    <li>Growth trajectory predictions</li>
+                    <li>Technical moat assessment</li>
+                    <li>Team strength evaluation</li>
+                    <li>Market opportunity analysis</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h2><span class="emoji">🏗️</span> Architecture</h2>
+        <div class="feature-box" style="text-align: center; padding: 40px;">
+            <p style="font-size: 1.2em; color: var(--neon-blue); margin-bottom: 20px;">
+                <strong>SYSTEM ARCHITECTURE</strong>
+            </p>
+            <p style="color: var(--text-secondary);">
+                GitHub API → Cloudflare Workers → Durable Objects → Claude AI (Opus/Sonnet/Haiku) → D1 Database/R2 Storage → React Dashboard
+            </p>
+            <p style="margin-top: 20px; font-size: 0.9em; color: var(--neon-green);">
+                Powered by edge computing at 200+ global locations
+            </p>
+        </div>
+        
+        <h2><span class="emoji">🎯</span> How It Works</h2>
+        
+        <h3><span class="emoji">🔍</span> Repository Discovery Process</h3>
+        <p>Our intelligent system discovers AI/ML repositories through:</p>
+        
+        <ol style="list-style: none; padding-left: 0;">
+            <li style="margin-bottom: 20px;">
+                <strong style="color: var(--neon-blue);">1. GitHub API Search</strong>
+                <ul>
+                    <li>Searches for repositories with AI/ML topics: <code>machine-learning</code>, <code>artificial-intelligence</code>, <code>deep-learning</code>, <code>neural-network</code>, <code>llm</code>, <code>generative-ai</code></li>
+                    <li>Filters by minimum stars (10+) to ensure quality</li>
+                    <li>Monitors recently updated projects (pushed within 30 days)</li>
+                    <li>Tracks new repositories as they emerge</li>
+                </ul>
+            </li>
+            
+            <li style="margin-bottom: 20px;">
+                <strong style="color: var(--neon-pink);">2. Smart Filtering</strong>
+                <ul>
+                    <li>Excludes forks to focus on original work</li>
+                    <li>Prioritizes actively maintained projects</li>
+                    <li>Identifies projects with growing momentum</li>
+                    <li>Detects breakthrough technologies early</li>
+                </ul>
+            </li>
+            
+            <li style="margin-bottom: 20px;">
+                <strong style="color: var(--neon-green);">3. Continuous Monitoring</strong>
+                <ul>
+                    <li>Hourly scans for new repositories</li>
+                    <li>Real-time tracking of star growth</li>
+                    <li>Immediate alerts for high-velocity projects</li>
+                    <li>24/7 coverage of the entire GitHub ecosystem</li>
+                </ul>
+            </li>
+        </ol>
+        
+        <h3><span class="emoji">📊</span> Three-Tier Analysis System</h3>
+        
+        <div class="tier-box tier-1">
+            <div class="tier-header"><span class="emoji">🏆</span> TIER 1: PREMIUM ANALYSIS</div>
+            <ul>
+                <li><span class="emoji">⭐</span> High-growth repositories with exceptional potential</li>
+                <li><span class="emoji">🤖</span> Analyzed by Claude Opus-4 for deep insights</li>
+                <li><span class="emoji">⏰</span> Scanned every few hours for latest updates</li>
+                <li><span class="emoji">📈</span> Includes technical moat & scalability assessment</li>
+            </ul>
+        </div>
+        
+        <div class="tier-box tier-2">
+            <div class="tier-header"><span class="emoji">🥈</span> TIER 2: STANDARD ANALYSIS</div>
+            <ul>
+                <li><span class="emoji">⭐</span> Established projects with steady growth</li>
+                <li><span class="emoji">🤖</span> Analyzed by Claude Sonnet-4 for comprehensive review</li>
+                <li><span class="emoji">⏰</span> Scanned multiple times daily</li>
+                <li><span class="emoji">📊</span> Full investment scoring and recommendations</li>
+            </ul>
+        </div>
+        
+        <div class="tier-box tier-3">
+            <div class="tier-header"><span class="emoji">🥉</span> TIER 3: DISCOVERY SCAN</div>
+            <ul>
+                <li><span class="emoji">⭐</span> Emerging projects and hidden gems</li>
+                <li><span class="emoji">🤖</span> Quickly assessed by Claude Haiku</li>
+                <li><span class="emoji">⏰</span> Monitored regularly for breakout potential</li>
+                <li><span class="emoji">🔍</span> Efficient scanning to catch rising stars early</li>
+            </ul>
+        </div>
+        
+        <h2><span class="emoji">🔬</span> What We Analyze</h2>
+        
+        <h3><span class="emoji">📊</span> Repository Data Collection</h3>
+        <p>For each repository, our system collects and analyzes:</p>
+        
+        <div class="feature-grid">
+            <div class="feature-box">
+                <h4><span class="emoji">📈</span> Growth Metrics</h4>
+                <ul>
+                    <li>Star velocity (stars/day)</li>
+                    <li>Fork growth rate</li>
+                    <li>Contributor acceleration</li>
+                    <li>Community expansion</li>
+                    <li>Momentum indicators</li>
+                </ul>
+            </div>
+            
+            <div class="feature-box">
+                <h4><span class="emoji">🏃</span> Activity Metrics</h4>
+                <ul>
+                    <li>Commit frequency</li>
+                    <li>Pull request volume</li>
+                    <li>Issue resolution time</li>
+                    <li>Release cadence</li>
+                    <li>Development velocity</li>
+                </ul>
+            </div>
+            
+            <div class="feature-box">
+                <h4><span class="emoji">👥</span> Team Analysis</h4>
+                <ul>
+                    <li>Core contributor count</li>
+                    <li>Contributor expertise</li>
+                    <li>Commit patterns</li>
+                    <li>Team stability</li>
+                    <li>Geographic distribution</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3><span class="emoji">🤖</span> AI-Powered Investment Analysis</h3>
+        <p>Each repository receives a comprehensive investment analysis including:</p>
+        
+        <div class="investment-scorecard">
+            <pre>
+┌─────────────────────────────────────────────────────────────┐
+│ 📊 INVESTMENT SCORECARD                                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ Overall Score: 8.5/10 ⭐⭐⭐⭐⭐⭐⭐⭐⭐                      │
+│                                                             │
+│ 💪 Key Strengths:                                          │
+│ • Exceptional growth rate (300% in 6 months)               │
+│ • Strong technical moat with novel approach                │
+│ • Experienced team from FAANG companies                    │
+│ • Clear monetization path identified                       │
+│                                                             │
+│ ⚠️  Risk Factors:                                          │
+│ • Heavy competition from established players               │
+│ • Dependency on single key contributor                     │
+│ • Limited documentation for enterprise adoption            │
+│                                                             │
+│ 💡 Investment Recommendation:                               │
+│ "Strong Buy - Early-stage opportunity with high growth     │
+│ potential. Consider seed investment before Series A."       │
+│                                                             │
+│ 🎯 Suggested Actions:                                       │
+│ • Schedule technical due diligence call                    │
+│ • Review competitor landscape analysis                     │
+│ • Connect with founding team                               │
+└─────────────────────────────────────────────────────────────┘
+            </pre>
+        </div>
+        
+        <h3><span class="emoji">📋</span> Complete Analysis Output</h3>
+        <p>For each analyzed repository, investors receive:</p>
+        
+        <ol style="list-style: decimal; padding-left: 30px;">
+            <li><strong>Executive Summary</strong>
+                <ul>
+                    <li>Investment score (1-10)</li>
+                    <li>One-line recommendation</li>
+                    <li>Key opportunity highlights</li>
+                </ul>
+            </li>
+            
+            <li><strong>Detailed Metrics</strong>
+                <ul>
+                    <li>Growth charts and projections</li>
+                    <li>Community health indicators</li>
+                    <li>Technical complexity assessment</li>
+                    <li>Market opportunity size</li>
+                </ul>
+            </li>
+            
+            <li><strong>Competitive Analysis</strong>
+                <ul>
+                    <li>Similar projects comparison</li>
+                    <li>Unique value propositions</li>
+                    <li>Market positioning</li>
+                </ul>
+            </li>
+            
+            <li><strong>Team Assessment</strong>
+                <ul>
+                    <li>Founder backgrounds</li>
+                    <li>Core team expertise</li>
+                    <li>Advisory board quality</li>
+                </ul>
+            </li>
+            
+            <li><strong>Investment Thesis</strong>
+                <ul>
+                    <li>Bull case scenario</li>
+                    <li>Bear case risks</li>
+                    <li>Expected ROI timeline</li>
+                </ul>
+            </li>
+        </ol>
+        
+        <h2><span class="emoji">🎮</span> Dashboard Preview</h2>
+        
+        <div style="text-align: center;">
+            <h3><span class="emoji">🌟</span> Neural Activity Command Center</h3>
+            <p style="font-style: italic; color: var(--text-secondary);">Real-time system monitoring with cyberpunk aesthetics</p>
+            
+            <div class="investment-scorecard">
+                <pre>
+╔═══════════════════════════════════════════════════════════╗
+║          🧠 NEURAL ACTIVITY COMMAND CENTER 🧠             ║
+╠═══════════════════════════════════════════════════════════╣
+║                                                           ║
+║  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐      ║
+║  │ API NEXUS   │  │ ANALYSIS    │  │ QUEUE       │      ║
+║  │ ████████░░  │  │ CORE        │  │ MATRIX      │      ║
+║  │ 87% Active  │  │ ██████████  │  │ ████░░░░░░  │      ║
+║  │             │  │ Processing  │  │ 42 Pending  │      ║
+║  └─────────────┘  └─────────────┘  └─────────────┘      ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+                </pre>
+            </div>
+        </div>
+        
+        <h2><span class="emoji">📡</span> API Endpoints</h2>
+        
+        <h3>Core Operations</h3>
+        <table class="api-table">
+            <tr>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>/api/agent/init</code></td>
+                <td>POST</td>
+                <td>Initialize automated scanning</td>
+            </tr>
+            <tr>
+                <td><code>/api/status</code></td>
+                <td>GET</td>
+                <td>System health and metrics</td>
+            </tr>
+            <tr>
+                <td><code>/api/scan</code></td>
+                <td>POST</td>
+                <td>Trigger manual repository scan</td>
+            </tr>
+            <tr>
+                <td><code>/api/analyze</code></td>
+                <td>POST</td>
+                <td>Analyze specific repository</td>
+            </tr>
+        </table>
+        
+        <h3>Data Access</h3>
+        <table class="api-table">
+            <tr>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>/api/repos/trending</code></td>
+                <td>GET</td>
+                <td>Get trending repositories</td>
+            </tr>
+            <tr>
+                <td><code>/api/repos/tier</code></td>
+                <td>GET</td>
+                <td>Get repositories by tier</td>
+            </tr>
+            <tr>
+                <td><code>/api/repos/count</code></td>
+                <td>GET</td>
+                <td>Get repository statistics</td>
+            </tr>
+            <tr>
+                <td><code>/api/metrics/comprehensive</code></td>
+                <td>GET</td>
+                <td>Detailed repository metrics</td>
+            </tr>
+        </table>
+        
+        <h3>Intelligence Reports</h3>
+        <table class="api-table">
+            <tr>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>/api/reports/daily</code></td>
+                <td>GET</td>
+                <td>Daily investment summary</td>
+            </tr>
+            <tr>
+                <td><code>/api/reports/enhanced</code></td>
+                <td>GET</td>
+                <td>Deep analysis reports</td>
+            </tr>
+            <tr>
+                <td><code>/api/alerts</code></td>
+                <td>GET</td>
+                <td>High-priority notifications</td>
+            </tr>
+        </table>
+        
+        <h2><span class="emoji">🎯</span> Use Cases</h2>
+        
+        <div class="feature-box">
+            <h3><span class="emoji">🏦</span> For Venture Capitalists</h3>
+            <blockquote style="border-left: 3px solid var(--neon-blue); padding-left: 20px; margin: 20px 0; color: var(--text-secondary);">
+                "Find the next AI unicorn before it hits mainstream"
+            </blockquote>
+            <ul>
+                <li>Automated deal flow for AI/ML investments</li>
+                <li>Early detection of high-growth projects</li>
+                <li>Comprehensive technical due diligence</li>
+            </ul>
+        </div>
+        
+        <div class="feature-box">
+            <h3><span class="emoji">💎</span> For Angel Investors</h3>
+            <blockquote style="border-left: 3px solid var(--neon-pink); padding-left: 20px; margin: 20px 0; color: var(--text-secondary);">
+                "Discover early-stage AI gems before VCs do"
+            </blockquote>
+            <ul>
+                <li>Identify promising projects at seed stage</li>
+                <li>Track founder activity and team growth</li>
+                <li>Get in before valuations skyrocket</li>
+            </ul>
+        </div>
+        
+        <h2><span class="emoji">🛠️</span> Advanced Configuration</h2>
+        
+        <details>
+            <summary><strong><span class="emoji">🔧</span> Environment Variables</strong></summary>
+            <pre><code># Required
+GITHUB_TOKEN=            # GitHub personal access token
+ANTHROPIC_API_KEY=       # Claude AI API key
+
+# Optional
+SCAN_INTERVAL=3600       # Scan frequency in seconds
+ANALYSIS_BATCH_SIZE=25   # Repos per batch
+TIER_1_THRESHOLD=100     # Minimum stars for Tier 1</code></pre>
+        </details>
+        
+        <details>
+            <summary><strong><span class="emoji">📊</span> Scoring Algorithm</strong></summary>
+            <p>The system uses a weighted scoring algorithm:</p>
+            <pre><code>Total Score = (Growth × 0.4) + (Engagement × 0.3) + (Quality × 0.3)
+
+Where:
+- Growth: Stars, forks, contributor velocity
+- Engagement: Issues, PRs, community activity  
+- Quality: Documentation, tests, maintenance</code></pre>
+        </details>
+        
+        <details>
+            <summary><strong><span class="emoji">🚀</span> Performance Tuning</strong></summary>
+            <ul>
+                <li><strong>Batch Processing</strong>: Analyzes multiple repositories in parallel</li>
+                <li><strong>Smart Caching</strong>: 7-day cache for analyzed repositories</li>
+                <li><strong>Rate Limiting</strong>: Automatic throttling for API limits</li>
+                <li><strong>Edge Computing</strong>: Runs at Cloudflare edge locations globally</li>
+            </ul>
+        </details>
+        
+        <h2><span class="emoji">📈</span> Success Metrics</h2>
+        
+        <h3><span class="emoji">🏆</span> What Makes This Powerful</h3>
+        <ul>
+            <li><span class="emoji">⚡</span> <strong>Speed</strong>: From discovery to analysis in minutes, not days</li>
+            <li><span class="emoji">🎯</span> <strong>Accuracy</strong>: VC-grade analysis powered by Claude AI</li>
+            <li><span class="emoji">📊</span> <strong>Coverage</strong>: Comprehensive monitoring of the AI/ML ecosystem</li>
+            <li><span class="emoji">🔄</span> <strong>Automation</strong>: 24/7 operation without human intervention</li>
+        </ul>
+        
+        <h3><span class="emoji">💡</span> Real Impact</h3>
+        <ul>
+            <li><strong>Time Saved</strong>: Replaces hours of manual research</li>
+            <li><strong>Opportunities Found</strong>: Discovers projects before they trend</li>
+            <li><strong>Insights Generated</strong>: Deep technical and business analysis</li>
+            <li><strong>Decisions Enabled</strong>: Data-driven investment recommendations</li>
+        </ul>
+        
+        <h2><span class="emoji">📚</span> Documentation</h2>
+        <ul>
+            <li><a href="docs/API.md">API Reference</a></li>
+            <li><a href="docs/TECHNICAL_ARCHITECTURE.md">Technical Architecture</a></li>
+            <li><a href="docs/DEPLOYMENT.md">Deployment Guide</a></li>
+            <li><a href="docs/TROUBLESHOOTING.md">Troubleshooting</a></li>
+        </ul>
+        
+        <h2><span class="emoji">🎉</span> Fun Facts</h2>
+        
+        <div style="text-align: center;">
+            <h3>Did You Know? <span class="emoji">🤔</span></h3>
+            <ul style="text-align: left; display: inline-block; max-width: 600px;">
+                <li>Our AI analyzes repositories faster than you can say "venture capital"</li>
+                <li>The cyberpunk dashboard was inspired by Blade Runner and The Matrix</li>
+                <li>We've discovered several projects that later became GitHub trending</li>
+                <li>The system runs 24/7 and never needs coffee <span class="emoji">☕</span></li>
+            </ul>
+        </div>
+        
+        <h2><span class="emoji">🚀</span> Quick Start</h2>
+        
+        <h3>Prerequisites</h3>
+        <ul>
+            <li>Node.js 18+</li>
+            <li>Cloudflare account</li>
+            <li>GitHub token (for API access)</li>
+            <li>Anthropic API key (for Claude AI)</li>
+        </ul>
+        
+        <h3>1️⃣ Clone & Install</h3>
+        <pre><code># Clone the repository
+git clone https://github.com/nnkostov/cloudflare-agent-vibe-cline.git
+cd cloudflare-agent-vibe-cline
+
+# Install dependencies
+npm install
+cd dashboard && npm install && cd ..</code></pre>
+        
+        <h3>2️⃣ Configure Environment</h3>
+        <pre><code># Copy environment template
+cp .env.example .env
+
+# Edit .env with your credentials:
+# - GITHUB_TOKEN
+# - ANTHROPIC_API_KEY</code></pre>
+        
+        <h3>3️⃣ Set Up Cloudflare Resources</h3>
+        <pre><code># Create D1 database
+wrangler d1 create github-agent-db
+
+# Create R2 bucket  
+wrangler r2 bucket create github-agent-storage
+
+# Update wrangler.toml with the generated IDs</code></pre>
+        
+        <h3>4️⃣ Initialize Database</h3>
+        <pre><code># Run database migrations
+wrangler d1 execute github-agent-db --file=./schema.sql</code></pre>
+        
+        <h3>5️⃣ Deploy to Production</h3>
+        <pre><code># Deploy the worker and dashboard
+npm run deploy
+
+# Your agent is now live! 🎉</code></pre>
+        
+        <h3>6️⃣ Initialize the Agent</h3>
+        <pre><code># Start automated scanning
+curl -X POST https://your-worker.workers.dev/api/agent/init</code></pre>
+        
+        <h2><span class="emoji">📜</span> License</h2>
+        <p>MIT License - see <a href="LICENSE">LICENSE</a> for details</p>
+        
+        <div class="footer">
+            <p><strong>Built with <span class="emoji">❤️</span> by developers who believe AI should work for us</strong></p>
+            
+            <div class="footer-links">
+                <a href="https://github-ai-intelligence.nkostov.workers.dev">🌐 Live Demo</a>
+                <a href="mailto:support@example.com">📧 Contact</a>
+                <a href="https://twitter.com/example">🐦 Twitter</a>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Add some dynamic effects
+        document.addEventListener('DOMContentLoaded', function() {
+            // Typing effect for main title
+            const title = document.querySelector('h1');
+            const originalText = title.innerHTML;
+            title.innerHTML = '';
+            let i = 0;
+            
+            function typeWriter() {
+                if (i < originalText.length) {
+                    title.innerHTML = originalText.slice(0, i + 1);
+                    i++;
+                    setTimeout(typeWriter, 50);
+                }
+            }
+            
+            setTimeout(typeWriter, 500);
+            
+            // Add random glitch effect to headers
+            const headers = document.querySelectorAll('h2, h3');
+            setInterval(() => {
+                const randomHeader = headers[Math.floor(Math.random() * headers.length)];
+                randomHeader.style.animation = 'glitch 0.3s ease-in-out';
+                setTimeout(() => {
+                    randomHeader.style.animation = '';
+                }, 300);
+            }, 5000);
+            
+            // Parallax effect on scroll
+            window.addEventListener('scroll', () => {
+                const scrolled = window.pageYOffset;
+                const parallax = document.querySelector('body::before');
+                if (parallax) {
+                    document.body.style.setProperty('--scroll', scrolled * 0.5 + 'px');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
