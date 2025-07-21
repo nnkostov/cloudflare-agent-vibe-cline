@@ -168,9 +168,9 @@ export class RepoAnalyzer extends BaseService {
     
     // Fallback to Claude-3 models
     if (score.total >= ScoringConfig.thresholds.veryHigh || score.growth >= 90) {
-      return 'claude-opus-4';
+      return 'claude-3-opus-20240229';
     } else if (score.total >= ScoringConfig.thresholds.highPotential) {
-      return 'claude-sonnet-4';
+      return 'claude-3-sonnet-20240229';
     }
     return 'claude-3-haiku-20240307';
   }

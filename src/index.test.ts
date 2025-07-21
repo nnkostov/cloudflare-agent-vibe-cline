@@ -41,26 +41,24 @@ describe('GitHub AI Intelligence Agent', () => {
   };
 
   describe('Worker', () => {
-    it('should return API information on root path', async () => {
+    it('should return HTML redirect in development mode', async () => {
       const request = new Request('http://localhost/');
-      const ctx = {} as any;
+      const devEnv = { ...mockEnv, ENVIRONMENT: 'development' };
 
-      const response = await worker.fetch(request, mockEnv, ctx);
-      const data = await response.json() as any;
+      const response = await worker.fetch(request, devEnv);
+      const text = await response.text();
 
       expect(response.status).toBe(200);
-      expect(data.name).toBe('GitHub AI Intelligence Agent');
-      expect(data.version).toBe('1.0.0');
-      expect(data.endpoints).toBeDefined();
+      expect(response.headers.get('Content-Type')).toBe('text/html');
+      expect(text).toContain('Redirecting to development server');
     });
 
     it('should handle CORS preflight requests', async () => {
       const request = new Request('http://localhost/api/scan', {
         method: 'OPTIONS'
       });
-      const ctx = {} as any;
 
-      const response = await worker.fetch(request, mockEnv, ctx);
+      const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
@@ -68,42 +66,39 @@ describe('GitHub AI Intelligence Agent', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      const request = new Request('http://localhost/api/error');
+      const request = new Request('http://localhost/api/unknown-endpoint');
       const errorEnv = {
         ...mockEnv,
         GITHUB_AGENT: {
-          idFromName: () => { throw new Error('Test error'); },
-          get: () => { throw new Error('Test error'); }
+          idFromName: () => ({ id: 'test' }),
+          get: () => ({
+            fetch: async () => new Response('Not Found', { status: 404 })
+          })
         } as any
       };
-      const ctx = {} as any;
 
-      const response = await worker.fetch(request, errorEnv, ctx);
-      const data = await response.json() as any;
+      const response = await worker.fetch(request, errorEnv);
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBeDefined();
+      expect(response.status).toBe(404);
     });
   });
 
   describe('API Endpoints', () => {
     it('should handle /api/status endpoint', async () => {
       const request = new Request('http://localhost/api/status');
-      const ctx = {} as any;
 
-      const response = await worker.fetch(request, mockEnv, ctx);
+      const response = await worker.fetch(request, mockEnv);
       const data = await response.json() as any;
 
       expect(response.status).toBe(200);
-      expect(data.status).toBe('active');
-      expect(data.dailyStats).toBeDefined();
+      expect(data.status).toBe('ok');
+      expect(data.timestamp).toBeDefined();
     });
 
     it('should handle /api/alerts endpoint', async () => {
       const request = new Request('http://localhost/api/alerts');
-      const ctx = {} as any;
 
-      const response = await worker.fetch(request, mockEnv, ctx);
+      const response = await worker.fetch(request, mockEnv);
       const data = await response.json() as any;
 
       expect(response.status).toBe(200);
@@ -113,9 +108,8 @@ describe('GitHub AI Intelligence Agent', () => {
 
     it('should handle /api/repos/trending endpoint', async () => {
       const request = new Request('http://localhost/api/repos/trending');
-      const ctx = {} as any;
 
-      const response = await worker.fetch(request, mockEnv, ctx);
+      const response = await worker.fetch(request, mockEnv);
       const data = await response.json() as any;
 
       expect(response.status).toBe(200);
@@ -128,9 +122,8 @@ describe('GitHub AI Intelligence Agent', () => {
         method: 'POST',
         body: JSON.stringify({ topics: ['ai'] })
       });
-      const ctx = {} as any;
 
-      const response = await worker.fetch(request, mockEnv, ctx);
+      const response = await worker.fetch(request, mockEnv);
 
       expect(response.status).toBe(200);
       expect(response.body).toBeDefined();

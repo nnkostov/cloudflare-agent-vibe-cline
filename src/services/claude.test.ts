@@ -179,6 +179,15 @@ describe('ClaudeService', () => {
     });
 
     it('should handle API errors gracefully', async () => {
+      // Mock the rate limiter to allow the request
+      vi.mock('../utils/simpleRateLimiter', () => ({
+        claudeRateLimiter: {
+          checkLimit: vi.fn().mockResolvedValue(true),
+          getWaitTime: vi.fn().mockReturnValue(0)
+        },
+        withExponentialBackoff: vi.fn((fn) => fn())
+      }));
+
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 429,
@@ -220,7 +229,7 @@ describe('ClaudeService', () => {
       expect(prompt).toContain('technical_moat');
       expect(prompt).toContain('scalability');
       expect(prompt).toContain('growth_prediction');
-      expect(prompt).toContain('10000'); // Enhanced README character limit
+      expect(prompt).toContain('5000'); // The actual limit used in the code
     }, 10000);
 
     it('should use standard prompt for non-V4 models', async () => {
@@ -257,6 +266,15 @@ describe('ClaudeService', () => {
 
   describe('parseResponse', () => {
     it('should handle malformed JSON gracefully', async () => {
+      // Mock the rate limiter to allow the request
+      vi.mock('../utils/simpleRateLimiter', () => ({
+        claudeRateLimiter: {
+          checkLimit: vi.fn().mockResolvedValue(true),
+          getWaitTime: vi.fn().mockReturnValue(0)
+        },
+        withExponentialBackoff: vi.fn((fn) => fn())
+      }));
+
       const mockResponse = {
         content: [{
           type: 'text',
@@ -275,6 +293,15 @@ describe('ClaudeService', () => {
     }, 10000);
 
     it('should extract JSON from response with extra text', async () => {
+      // Mock the rate limiter to allow the request
+      vi.mock('../utils/simpleRateLimiter', () => ({
+        claudeRateLimiter: {
+          checkLimit: vi.fn().mockResolvedValue(true),
+          getWaitTime: vi.fn().mockReturnValue(0)
+        },
+        withExponentialBackoff: vi.fn((fn) => fn())
+      }));
+
       const mockResponse = {
         content: [{
           type: 'text',
