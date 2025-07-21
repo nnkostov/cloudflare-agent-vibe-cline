@@ -33,6 +33,26 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
     staleTime: 3000,
   });
 
+  // Fetch worker metrics for real activity data
+  const { data: workerMetrics } = useQuery({
+    queryKey: ['worker-metrics'],
+    queryFn: api.getWorkerMetrics,
+    refetchInterval: 10000, // 10 seconds for activity metrics
+    refetchIntervalInBackground: true,
+    retry: 1,
+    staleTime: 5000,
+  });
+
+  // Fetch API metrics for real call counts
+  const { data: apiMetrics } = useQuery({
+    queryKey: ['api-metrics'],
+    queryFn: () => api.getAPIMetrics(24), // Last 24 hours
+    refetchInterval: 10000, // 10 seconds refresh
+    refetchIntervalInBackground: true,
+    retry: 1,
+    staleTime: 5000,
+  });
+
   // Use real-time data sources with fallbacks
   const currentStatus = realtimeStatus || status;
   const currentAnalysisStats = realtimeAnalysisStats || analysisStats;
@@ -41,7 +61,11 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
   const isBatchActive = !!activeBatchId;
 
   // REAL API ACTIVITY CALCULATION
-  // Calculate actual API usage from rate limit consumption
+  // Use worker metrics for actual activity levels
+  const latestMetric = workerMetrics?.metrics?.[workerMetrics.metrics.length - 1];
+  const apiActivityFromMetrics = latestMetric?.components?.apiActivity || 0;
+  
+  // Calculate rate limit consumption as a secondary indicator
   const githubRateLimitUsage = currentStatus?.rateLimits?.github 
     ? Math.round(((currentStatus.rateLimits.github.maxTokens - currentStatus.rateLimits.github.availableTokens) / currentStatus.rateLimits.github.maxTokens) * 100)
     : 0;
@@ -54,21 +78,25 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
     ? Math.round(((currentStatus.rateLimits.githubSearch.maxTokens - currentStatus.rateLimits.githubSearch.availableTokens) / currentStatus.rateLimits.githubSearch.maxTokens) * 100)
     : 0;
 
-  // If batch is active, simulate API activity
-  const batchActivityBoost = isBatchActive ? 50 : 0;
+  // If batch is active, ensure minimum activity levels
+  const batchActivityBoost = isBatchActive ? 40 : 0;
 
-  // Real API activity: weighted average of actual API consumption + batch boost
+  // Combine worker metrics with rate limit data for comprehensive activity view
   const apiUsage = Math.round(
-    Math.min(100, 
-      (githubRateLimitUsage * 0.5) +    // GitHub API is primary
-      (claudeRateLimitUsage * 0.3) +    // Claude for analysis
-      (githubSearchUsage * 0.2) +        // Search for discovery
-      batchActivityBoost                 // Batch processing activity
+    Math.max(
+      apiActivityFromMetrics, // Use worker metrics as primary source
+      Math.min(100, 
+        (githubRateLimitUsage * 0.5) +    // GitHub API is primary
+        (claudeRateLimitUsage * 0.3) +    // Claude for analysis
+        (githubSearchUsage * 0.2) +        // Search for discovery
+        batchActivityBoost                 // Batch processing activity
+      )
     )
   );
 
   // REAL ANALYSIS ACTIVITY CALCULATION
-  // Calculate actual analysis processing activity
+  // Use worker metrics for actual analysis activity
+  const analysisActivityFromMetrics = latestMetric?.components?.analysisActivity || 0;
   const totalRepos = currentAnalysisStats?.totalRepositories || 1;
   
   // Analysis activity based on recent progress and Claude API usage
@@ -76,16 +104,20 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
   const analysisVelocity = claudeRateLimitUsage; // Claude usage indicates active analysis
   
   // If batch is active, show significant analysis activity
-  const batchAnalysisBoost = isBatchActive ? 60 : 0;
+  const batchAnalysisBoost = isBatchActive ? 50 : 0;
   
-  // If there's significant Claude usage or batch is active, system is actively analyzing
-  const analysisProgress = Math.max(
-    Math.min(baseAnalysisProgress + analysisVelocity + batchAnalysisBoost, 100), // Don't exceed 100%
-    claudeRateLimitUsage > 10 ? 30 : (isBatchActive ? 60 : 0) // Minimum activity levels
+  // Combine worker metrics with other indicators
+  const analysisProgress = Math.round(
+    Math.max(
+      analysisActivityFromMetrics, // Use worker metrics as primary
+      Math.min(baseAnalysisProgress + analysisVelocity + batchAnalysisBoost, 100), // Don't exceed 100%
+      claudeRateLimitUsage > 10 ? 30 : (isBatchActive ? 50 : 0) // Minimum activity levels
+    )
   );
 
   // REAL QUEUE ACTIVITY CALCULATION
-  // Calculate remaining work in the pipeline
+  // Use worker metrics for database activity
+  const dbActivityFromMetrics = latestMetric?.components?.dbActivity || 0;
   const remainingRepos = currentAnalysisStats?.remainingRepositories || 0;
   const queueUtilization = totalRepos > 0 
     ? Math.round((remainingRepos / totalRepos) * 100) // How much work is LEFT
@@ -93,16 +125,20 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
   
   // Queue load should be HIGH when actively processing, LOW when idle
   const isActivelyProcessing = claudeRateLimitUsage > 5 || githubRateLimitUsage > 10 || isBatchActive;
-  const processingBonus = isActivelyProcessing ? 40 : 0;
+  const processingBonus = isActivelyProcessing ? 30 : 0;
   
   // If batch is active, show high queue activity
-  const batchQueueBoost = isBatchActive ? 50 : 0;
+  const batchQueueBoost = isBatchActive ? 40 : 0;
   
-  // Queue activity: combination of remaining work and active processing
-  // Higher remaining work + active processing = higher load
-  const queueLoad = Math.min(
-    Math.round((queueUtilization * 0.5) + processingBonus + batchQueueBoost),
-    100
+  // Combine worker metrics with queue indicators
+  const queueLoad = Math.round(
+    Math.max(
+      dbActivityFromMetrics, // Use worker metrics as primary
+      Math.min(
+        (queueUtilization * 0.5) + processingBonus + batchQueueBoost,
+        100
+      )
+    )
   );
 
   // Status indicators
@@ -297,14 +333,21 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
         .metric-display {
           text-align: center;
           margin: 20px 0;
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
         }
         
         .metric-value {
-          font-size: 1.5rem;
-          font-weight: 700;
+          font-size: 2.5rem;
+          font-weight: 800;
           margin: 0;
           text-shadow: 0 0 20px currentColor;
           animation: metric-glow 3s ease-in-out infinite;
+          line-height: 1;
+          letter-spacing: -0.02em;
         }
         
         @keyframes metric-glow {
@@ -313,11 +356,14 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
         }
         
         .metric-label {
-          font-size: 0.75rem;
+          font-size: 0.875rem;
           color: rgba(148, 163, 184, 0.9);
-          margin: 4px 0 0 0;
+          margin: 0;
           text-transform: uppercase;
-          letter-spacing: 0.1em;
+          letter-spacing: 0.15em;
+          white-space: nowrap;
+          font-weight: 600;
+          line-height: 1;
         }
         
         .metric-details {
@@ -509,28 +555,51 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
           </div>
 
           <div className="metric-display">
-            <h2 className="metric-value text-blue-400">{apiUsage}%</h2>
-            <p className="metric-label">Activity Level</p>
+            <h2 className="metric-value text-blue-400">
+              {apiMetrics?.apiCalls ? 
+                `${apiMetrics.apiCalls.github.today + apiMetrics.apiCalls.claude.today + apiMetrics.apiCalls.search.today}` : 
+                '0'
+              }
+            </h2>
+            <p className="metric-label">API Calls Today</p>
           </div>
 
           <div className="metric-details">
             <div className="detail-row">
               <span className="detail-label">GitHub API</span>
-              <span className="detail-value">{githubRateLimitUsage}%</span>
+              <span className="detail-value">
+                {apiMetrics?.apiCalls?.github ? 
+                  `${apiMetrics.apiCalls.github.today} calls (${apiMetrics.apiCalls.github.remaining} remaining)` : 
+                  'Loading...'
+                }
+              </span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Claude API</span>
-              <span className="detail-value">{claudeRateLimitUsage}%</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">GitHub Tokens</span>
               <span className="detail-value">
-                {currentStatus?.rateLimits?.github?.availableTokens || 0}/{currentStatus?.rateLimits?.github?.maxTokens || 0}
+                {apiMetrics?.apiCalls?.claude ? 
+                  `${apiMetrics.apiCalls.claude.today} analyses (${apiMetrics.apiCalls.claude.tokensUsed})` : 
+                  'Loading...'
+                }
               </span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Search API</span>
-              <span className="detail-value">{githubSearchUsage}%</span>
+              <span className="detail-value">
+                {apiMetrics?.apiCalls?.search ? 
+                  `${apiMetrics.apiCalls.search.today} queries (${apiMetrics.apiCalls.search.remaining} left)` : 
+                  'Loading...'
+                }
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Last Activity</span>
+              <span className="detail-value">
+                {apiMetrics?.activity?.lastActivity ? 
+                  new Date(apiMetrics.activity.lastActivity).toLocaleTimeString() : 
+                  'Monitoring'
+                }
+              </span>
             </div>
           </div>
 
@@ -570,23 +639,25 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
 
           <div className="metric-details">
             <div className="detail-row">
-              <span className="detail-label">Base Progress</span>
+              <span className="detail-label">Coverage</span>
               <span className="detail-value">{Math.round(baseAnalysisProgress)}%</span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Claude Usage</span>
-              <span className="detail-value">{claudeRateLimitUsage}%</span>
+              <span className="detail-label">Analyzed</span>
+              <span className="detail-value">
+                {currentAnalysisStats?.analyzedRepositories || 0} repos
+              </span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Analyzed Repos</span>
+              <span className="detail-label">Remaining</span>
               <span className="detail-value">
-                {currentAnalysisStats?.analyzedRepositories || 0}/{currentAnalysisStats?.totalRepositories || 0}
+                {currentAnalysisStats?.remainingRepositories || 0} repos
               </span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Neural State</span>
               <span className="detail-value">
-                {isBatchActive ? 'BATCH PROCESSING' : (claudeRateLimitUsage > 10 ? 'ACTIVE' : 'STANDBY')}
+                {isBatchActive ? 'BATCH MODE' : (analysisProgress > 30 ? 'ANALYZING' : 'READY')}
               </span>
             </div>
           </div>
@@ -627,17 +698,17 @@ export default function NeuralActivityCenter({ status, analysisStats, activeBatc
 
           <div className="metric-details">
             <div className="detail-row">
-              <span className="detail-label">Utilization</span>
-              <span className="detail-value">{queueUtilization}%</span>
+              <span className="detail-label">Queue Size</span>
+              <span className="detail-value">{remainingRepos} repos</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Processing</span>
               <span className="detail-value">{isActivelyProcessing ? 'ACTIVE' : 'IDLE'}</span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Remaining</span>
+              <span className="detail-label">Batch Size</span>
               <span className="detail-value">
-                {currentAnalysisStats?.remainingRepositories || 0} repos
+                {currentAnalysisStats?.batchInfo?.batchSize || 30} repos/batch
               </span>
             </div>
             <div className="detail-row">

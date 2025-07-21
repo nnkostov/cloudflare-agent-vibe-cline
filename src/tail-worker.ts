@@ -138,15 +138,45 @@ export class TailWorker {
   private extractMetrics(log: ProcessedLog, messages: string[]): void {
     const message = messages.join(' ');
     
-    // Extract API call counts
+    // Extract API call counts with better pattern matching
     const apiCalls = { github: 0, claude: 0 };
     
-    if (message.includes('GitHub API') || message.includes('github.com')) {
+    // Look for explicit API call markers first
+    if (message.includes('[API CALL]')) {
+      if (message.includes('GitHub') || message.includes('github')) {
+        apiCalls.github = 1;
+      }
+      if (message.includes('Claude') || message.includes('claude')) {
+        apiCalls.claude = 1;
+      }
+    }
+    
+    // GitHub API detection - look for various GitHub-related patterns
+    if (message.includes('GitHub') || 
+        message.includes('github') ||
+        message.includes('octokit') ||
+        message.includes('repos.get') ||
+        message.includes('search.repos') ||
+        message.includes('listContributors') ||
+        message.includes('getReadme')) {
       apiCalls.github = 1;
     }
     
-    if (message.includes('Claude') || message.includes('Anthropic')) {
+    // Claude API detection - look for Claude/Anthropic patterns
+    if (message.includes('Claude') || 
+        message.includes('claude') ||
+        message.includes('Anthropic') ||
+        message.includes('anthropic') ||
+        message.includes('Model:') && message.includes('tokens') ||
+        message.includes('analyze repository')) {
       apiCalls.claude = 1;
+    }
+    
+    // GitHub Search API specific detection
+    if (message.includes('search query') || 
+        message.includes('search.repos') ||
+        message.includes('searchTrendingRepos')) {
+      apiCalls.github = 1; // Count search as GitHub API call
     }
     
     if (apiCalls.github > 0 || apiCalls.claude > 0) {

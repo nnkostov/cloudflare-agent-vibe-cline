@@ -373,6 +373,41 @@ class ApiClient {
       };
     }>('/worker-metrics');
   }
+
+  // API Metrics - Real call counts
+  getAPIMetrics = async (hours: number = 24) => {
+    return this.request<{
+      timestamp: string;
+      hours: number;
+      apiCalls: {
+        github: {
+          today: number;
+          remaining: number;
+          limit: number;
+        };
+        claude: {
+          today: number;
+          analyses: number;
+          tokensUsed: string;
+          models: {
+            opus: number;
+            sonnet: number;
+            haiku: number;
+          };
+        };
+        search: {
+          today: number;
+          remaining: number;
+          limit: number;
+        };
+      };
+      activity: {
+        repositoriesScanned: number;
+        analysesCompleted: number;
+        lastActivity: string;
+      };
+    }>(`/api-metrics?hours=${hours}`);
+  }
 }
 
 export const api = new ApiClient();

@@ -45,6 +45,7 @@ export class GitHubService extends BaseService {
             
             console.log('GitHub search query:', query);
             console.log('GitHub token present:', !!this.env.GITHUB_TOKEN);
+            console.log('[API CALL] GitHub Search API - searchTrendingRepos');
 
             const response = await this.octokit.search.repos({
               q: query,
@@ -78,6 +79,7 @@ export class GitHubService extends BaseService {
     return globalConnectionPool.withConnection(async () => {
       return withExponentialBackoff(async () => {
         try {
+          console.log(`[API CALL] GitHub API - getRepoDetails for ${owner}/${name}`);
           const response = await this.octokit.repos.get({
             owner,
             repo: name,
@@ -103,12 +105,14 @@ export class GitHubService extends BaseService {
       return withExponentialBackoff(async () => {
         try {
           // Make requests sequentially to respect rate limits
+          console.log(`[API CALL] GitHub API - getRepoMetrics for ${owner}/${name}`);
           const repo = await this.octokit.repos.get({ owner, repo: name });
           
           // Small delay between requests
           await new Promise(resolve => setTimeout(resolve, 100));
           await githubRateLimiter.acquire();
           
+          console.log(`[API CALL] GitHub API - listContributors for ${owner}/${name}`);
           const contributors = await this.octokit.repos.listContributors({ 
             owner, 
             repo: name, 
@@ -153,6 +157,7 @@ export class GitHubService extends BaseService {
       return globalConnectionPool.withConnection(async () => {
         return withExponentialBackoff(async () => {
           try {
+            console.log(`[API CALL] GitHub API - getContributors for ${owner}/${name}`);
             const response = await this.octokit.repos.listContributors({
               owner,
               repo: name,
@@ -174,6 +179,7 @@ export class GitHubService extends BaseService {
               const contributor = await globalConnectionPool.withConnection(async () => {
                 return withExponentialBackoff(async () => {
                   try {
+                    console.log(`[API CALL] GitHub API - getByUsername for ${contrib.login}`);
                     const userResponse = await this.octokit.users.getByUsername({
                       username: contrib.login!,
                     });
@@ -241,6 +247,7 @@ export class GitHubService extends BaseService {
 
           const query = `created:>${dateString} stars:>=${minStars} sort:stars-desc`;
 
+          console.log('[API CALL] GitHub Search API - searchRecentHighGrowthRepos');
           const response = await this.octokit.search.repos({
             q: query,
             sort: 'stars',
@@ -267,6 +274,7 @@ export class GitHubService extends BaseService {
     return globalConnectionPool.withConnection(async () => {
       return withExponentialBackoff(async () => {
         try {
+          console.log(`[API CALL] GitHub API - getReadme for ${owner}/${name}`);
           const response = await this.octokit.repos.getReadme({
             owner,
             repo: name,

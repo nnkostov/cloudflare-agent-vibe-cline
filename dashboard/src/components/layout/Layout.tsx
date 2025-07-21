@@ -48,8 +48,32 @@ export default function Layout({ children }: LayoutProps) {
     staleTime: 2000,
   });
 
-  // REAL SYSTEM METRICS - MATCHING NEURAL ACTIVITY COMMAND CENTER
-  // Calculate actual API usage from rate limit consumption (same logic as Neural Activity)
+  // Fetch worker metrics for real activity data
+  const { data: workerMetrics } = useQuery({
+    queryKey: ['worker-metrics-sidebar'],
+    queryFn: api.getWorkerMetrics,
+    refetchInterval: 10000, // 10 seconds for activity metrics
+    refetchIntervalInBackground: true,
+    retry: 1,
+    staleTime: 5000,
+  });
+
+  // Fetch API metrics for real call counts
+  const { data: apiMetrics } = useQuery({
+    queryKey: ['api-metrics-sidebar'],
+    queryFn: () => api.getAPIMetrics(24), // Last 24 hours
+    refetchInterval: 10000, // 10 seconds refresh
+    refetchIntervalInBackground: true,
+    retry: 1,
+    staleTime: 5000,
+  });
+
+  // REAL SYSTEM METRICS - ENHANCED WITH WORKER METRICS
+  // Use worker metrics for actual activity levels
+  const latestMetric = workerMetrics?.metrics?.[workerMetrics.metrics.length - 1];
+  const apiActivityFromMetrics = latestMetric?.components?.apiActivity || 0;
+  
+  // Calculate rate limit consumption as secondary indicator
   const githubRateLimitUsage = status?.rateLimits?.github 
     ? Math.round(((status.rateLimits.github.maxTokens - status.rateLimits.github.availableTokens) / status.rateLimits.github.maxTokens) * 100)
     : 0;
@@ -62,39 +86,51 @@ export default function Layout({ children }: LayoutProps) {
     ? Math.round(((status.rateLimits.githubSearch.maxTokens - status.rateLimits.githubSearch.availableTokens) / status.rateLimits.githubSearch.maxTokens) * 100)
     : 0;
 
-  // Real API activity: weighted average of actual API consumption (SAME AS NEURAL ACTIVITY)
+  // Combine worker metrics with rate limit data for comprehensive activity view
   const apiUsage = Math.round(
-    (githubRateLimitUsage * 0.5) +    // GitHub API is primary
-    (claudeRateLimitUsage * 0.3) +    // Claude for analysis
-    (githubSearchUsage * 0.2)         // Search for discovery
+    Math.max(
+      apiActivityFromMetrics, // Use worker metrics as primary source
+      (githubRateLimitUsage * 0.5) +    // GitHub API is primary
+      (claudeRateLimitUsage * 0.3) +    // Claude for analysis
+      (githubSearchUsage * 0.2)         // Search for discovery
+    )
   );
 
-  // REAL ANALYSIS ACTIVITY - MATCHING NEURAL ACTIVITY COMMAND CENTER
+  // REAL ANALYSIS ACTIVITY - ENHANCED WITH WORKER METRICS
+  const analysisActivityFromMetrics = latestMetric?.components?.analysisActivity || 0;
   const totalRepos = analysisStats?.totalRepositories || 1;
   const analyzedRepos = analysisStats?.analyzedRepositories || 0;
   const baseAnalysisProgress = analysisStats?.analysisProgress || 0;
   const analysisVelocity = claudeRateLimitUsage; // Claude usage indicates active analysis
   
-  // If there's significant Claude usage, system is actively analyzing (SAME AS NEURAL ACTIVITY)
-  const analysisProgress = Math.max(
-    Math.min(baseAnalysisProgress + analysisVelocity, 100), // Don't exceed 100%
-    claudeRateLimitUsage > 10 ? 30 : 0 // Minimum 30% if Claude is active
+  // Combine worker metrics with other indicators
+  const analysisProgress = Math.round(
+    Math.max(
+      analysisActivityFromMetrics, // Use worker metrics as primary
+      Math.min(baseAnalysisProgress + analysisVelocity, 100), // Don't exceed 100%
+      claudeRateLimitUsage > 10 ? 30 : 0 // Minimum 30% if Claude is active
+    )
   );
 
-  // REAL QUEUE ACTIVITY - MATCHING NEURAL ACTIVITY COMMAND CENTER
-  // Fix inverted logic: High remaining repos should show LOW activity (system idle)
+  // REAL QUEUE ACTIVITY - ENHANCED WITH WORKER METRICS
+  const dbActivityFromMetrics = latestMetric?.components?.dbActivity || 0;
   const queueUtilization = totalRepos > 0 
     ? Math.round((analyzedRepos / totalRepos) * 100) // How much work is DONE
     : 0;
   
-  // Queue load should be HIGH when actively processing, LOW when idle (SAME AS NEURAL ACTIVITY)
+  // Queue load should be HIGH when actively processing, LOW when idle
   const isActivelyProcessing = claudeRateLimitUsage > 5 || githubRateLimitUsage > 10;
-  const processingBonus = isActivelyProcessing ? 40 : 0;
+  const processingBonus = isActivelyProcessing ? 30 : 0;
   
-  // Queue activity: combination of utilization and active processing (SAME AS NEURAL ACTIVITY)
-  const queueLoad = Math.min(
-    queueUtilization + processingBonus,
-    100
+  // Combine worker metrics with queue indicators
+  const queueLoad = Math.round(
+    Math.max(
+      dbActivityFromMetrics, // Use worker metrics as primary
+      Math.min(
+        queueUtilization + processingBonus,
+        100
+      )
+    )
   );
 
   const systemHealth = status?.status === 'ok' ? 'SYSTEMS OPERATIONAL' : 'SYSTEM DEGRADED';
@@ -696,43 +732,57 @@ Queue Load: ${queueLoad}% | Activity Type: ${activityType.replace('-', ' ')}`}
             <div className="activity-metrics">
               <div 
                 className="metric-row"
-                title={`API Activity: ${apiUsage}%
-GitHub API: ${githubRateLimitUsage}% (${status?.rateLimits?.github?.availableTokens || 0}/${status?.rateLimits?.github?.maxTokens || 0} tokens)
-Claude API: ${claudeRateLimitUsage}%
-Search API: ${githubSearchUsage}%
-Real calculation: GitHub (50%) + Claude (30%) + Search (20%)`}
+                title={`API Activity Today:
+GitHub API: ${apiMetrics?.apiCalls?.github?.today || 0} calls (${apiMetrics?.apiCalls?.github?.remaining || 0} remaining)
+Claude API: ${apiMetrics?.apiCalls?.claude?.today || 0} analyses (${apiMetrics?.apiCalls?.claude?.tokensUsed || '0'})
+Search API: ${apiMetrics?.apiCalls?.search?.today || 0} queries (${apiMetrics?.apiCalls?.search?.remaining || 0} left)`}
               >
                 <span className="metric-label">API</span>
                 <div className="metric-bar">
                   <div className="metric-fill cpu-fill" style={{ width: `${apiUsage}%` }} />
                 </div>
-                <span className="metric-value">{apiUsage}%</span>
+                <span className="metric-value" style={{ fontSize: '0.6rem', width: '45px' }}>
+                  {apiMetrics?.apiCalls ? 
+                    `${apiMetrics.apiCalls.github.today + apiMetrics.apiCalls.claude.today + apiMetrics.apiCalls.search.today} calls` : 
+                    `${apiUsage}%`
+                  }
+                </span>
               </div>
               <div 
                 className="metric-row"
-                title={`Analysis Progress: ${Math.round(analysisProgress)}%
-Base Progress: ${Math.round(baseAnalysisProgress)}% (${analysisStats?.analyzedRepositories || 0}/${analysisStats?.totalRepositories || 0} repos)
-Claude Usage: ${claudeRateLimitUsage}%
-Real calculation: Base progress + Claude API usage (indicates active analysis)`}
+                title={`Analysis Activity:
+Completed: ${apiMetrics?.apiCalls?.claude?.today || 0} analyses today
+Coverage: ${Math.round(baseAnalysisProgress)}% (${analysisStats?.analyzedRepositories || 0}/${analysisStats?.totalRepositories || 0} repos)
+Tokens Used: ${apiMetrics?.apiCalls?.claude?.tokensUsed || '0'}`}
               >
                 <span className="metric-label">ANA</span>
                 <div className="metric-bar">
                   <div className="metric-fill mem-fill" style={{ width: `${analysisProgress}%` }} />
                 </div>
-                <span className="metric-value">{Math.round(analysisProgress)}%</span>
+                <span className="metric-value" style={{ fontSize: '0.6rem', width: '45px' }}>
+                  {apiMetrics?.apiCalls?.claude ? 
+                    `${apiMetrics.apiCalls.claude.today} done` : 
+                    `${Math.round(analysisProgress)}%`
+                  }
+                </span>
               </div>
               <div 
                 className="metric-row"
-                title={`Queue Load: ${queueLoad}%
-Utilization: ${queueUtilization}% (${analyzedRepos}/${totalRepos} repos completed)
-Processing: ${isActivelyProcessing ? 'ACTIVE' : 'IDLE'}
-Real calculation: Completion percentage + active processing bonus`}
+                title={`Queue Status:
+Remaining: ${analysisStats?.remainingRepositories || 0} repos
+Completion: ${queueUtilization}% (${analyzedRepos}/${totalRepos} repos)
+Processing: ${isActivelyProcessing ? 'ACTIVE' : 'IDLE'}`}
               >
                 <span className="metric-label">QUE</span>
                 <div className="metric-bar">
                   <div className="metric-fill net-fill" style={{ width: `${queueLoad}%` }} />
                 </div>
-                <span className="metric-value">{queueLoad}%</span>
+                <span className="metric-value" style={{ fontSize: '0.6rem', width: '45px' }}>
+                  {analysisStats?.remainingRepositories !== undefined ? 
+                    `${analysisStats.remainingRepositories} left` : 
+                    `${queueLoad}%`
+                  }
+                </span>
               </div>
             </div>
 

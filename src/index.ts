@@ -182,6 +182,7 @@ class WorkerService extends BaseService {
       '/logs/api-usage': () => this.handleAPIUsage(request),
       '/logs/scan-activity': () => this.handleScanActivity(request),
       '/logs/critical-alerts': () => this.handleCriticalAlerts(request),
+      '/api-metrics': () => this.handleAPIMetrics(request),
       '/analyze/batch': () => this.handleBatchAnalyze(request),
       '/analyze/batch/status': () => this.handleBatchStatus(request),
       '/analyze/batch/stop': () => this.handleBatchStop(request),
@@ -1772,6 +1773,80 @@ class WorkerService extends BaseService {
     const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
     const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
     return squaredDiffs.reduce((sum, diff) => sum + diff, 0) / values.length;
+  }
+
+  /**
+   * Handle API metrics endpoint - returns real API call counts
+   */
+  private async handleAPIMetrics(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const url = new URL(request.url);
+      const hours = parseInt(url.searchParams.get('hours') || '24');
+      
+      const { LogsService } = await import('./services/logs');
+      const logsService = new LogsService(this.env);
+      
+      // Get API usage from logs
+      const apiUsage = await logsService.getAPIUsage(hours);
+      
+      // Get current rate limit status for remaining counts
+      const { githubRateLimiter, githubSearchRateLimiter, claudeRateLimiter } = 
+        await import('./utils/rateLimiter');
+      
+      const rateLimits = {
+        github: githubRateLimiter.getStatus(),
+        githubSearch: githubSearchRateLimiter.getStatus(),
+        claude: claudeRateLimiter.getStatus(),
+      };
+      
+      // Calculate calls today (from logs)
+      const callsToday = {
+        github: apiUsage.github.total,
+        claude: apiUsage.claude.opus + apiUsage.claude.sonnet + apiUsage.claude.haiku,
+        search: apiUsage.github.search
+      };
+      
+      // Get analysis stats for additional context
+      const analysisStats = await this.getAnalysisStatsInternal();
+      
+      // For GitHub, we should use the actual API rate limit, not our internal limiter
+      // GitHub allows 5000 requests per hour for authenticated requests
+      const githubHourlyLimit = 5000;
+      const githubRemaining = Math.max(0, githubHourlyLimit - callsToday.github);
+      
+      return this.jsonResponse({
+        timestamp: new Date().toISOString(),
+        hours,
+        apiCalls: {
+          github: {
+            today: callsToday.github,
+            remaining: githubRemaining,
+            limit: githubHourlyLimit
+          },
+          claude: {
+            today: callsToday.claude,
+            analyses: analysisStats.analyzedRepositories,
+            tokensUsed: apiUsage.claude.estimatedCost > 0 ? 
+              Math.round(apiUsage.claude.estimatedCost * 1000) + 'k' : '0',
+            models: {
+              opus: apiUsage.claude.opus,
+              sonnet: apiUsage.claude.sonnet,
+              haiku: apiUsage.claude.haiku
+            }
+          },
+          search: {
+            today: callsToday.search,
+            remaining: rateLimits.githubSearch.availableTokens,
+            limit: rateLimits.githubSearch.maxTokens
+          }
+        },
+        activity: {
+          repositoriesScanned: analysisStats.analyzedRepositories,
+          analysesCompleted: callsToday.claude,
+          lastActivity: new Date().toISOString() // This could be enhanced with actual last activity time
+        }
+      });
+    }, 'get API metrics');
   }
 
   /**

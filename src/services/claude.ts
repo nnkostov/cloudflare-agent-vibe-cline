@@ -18,7 +18,7 @@ export class ClaudeService extends BaseService {
   async analyzeRepository(
     repo: Repository,
     readme: string,
-    model: ClaudeModel = 'claude-sonnet-4'
+    model: ClaudeModel = 'claude-sonnet-4-20250514'
   ): Promise<Analysis> {
     // Check rate limit
     if (!await claudeRateLimiter.checkLimit()) {
@@ -32,6 +32,7 @@ export class ClaudeService extends BaseService {
         ? this.buildEnhancedPrompt(repo, readme)
         : this.buildPrompt(repo, readme);
       
+      console.log(`[API CALL] Claude API - analyzeRepository with model ${model}`);
       const response = await this.callClaude(prompt, model);
       return this.parseResponse(response, repo.id, model);
     }, `analyze repository ${repo.full_name}`);
@@ -41,7 +42,7 @@ export class ClaudeService extends BaseService {
    * Check if model is Claude 3.5 Sonnet (latest generation)
    */
   private isClaudeV4Model(model: ClaudeModel): boolean {
-    return model === 'claude-opus-4' || model === 'claude-sonnet-4' || 
+    return model === 'claude-opus-4-20250514' || model === 'claude-sonnet-4-20250514' || 
            model === 'claude-3-5-sonnet-20241022' || model === 'claude-3-5-sonnet-20240620';
   }
 
@@ -164,7 +165,7 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
       
       // Log token usage for monitoring
       if (data.usage) {
-        console.log(`Model: ${model}, Input: ${data.usage.input_tokens}, Output: ${data.usage.output_tokens}, Total: ${data.usage.input_tokens + data.usage.output_tokens}`);
+        console.log(`[API CALL] Claude API Response - Model: ${model}, Input: ${data.usage.input_tokens}, Output: ${data.usage.output_tokens}, Total: ${data.usage.input_tokens + data.usage.output_tokens}`);
       }
       
       return data.content[0]?.text || '';
@@ -224,13 +225,14 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
   private estimateCost(model: ClaudeModel, responseLength: number): number {
     const tokens = responseLength * 0.25; // Rough estimate
     const pricing: Record<string, number> = {
-      'claude-opus-4': 15.00,              // Claude 4 Opus pricing
-      'claude-sonnet-4': 3.00,             // Claude 4 Sonnet pricing
+      'claude-opus-4-20250514': 15.00,              // Claude 4 Opus pricing
+      'claude-sonnet-4-20250514': 3.00,             // Claude 4 Sonnet pricing
       'claude-3-5-sonnet-20241022': 3.00,   // Claude 3.5 Sonnet pricing
       'claude-3-5-sonnet-20240620': 3.00,   // Claude 3.5 Sonnet pricing
       'claude-3-opus-20240229': 15.00,
       'claude-3-sonnet-20240229': 3.00,
       'claude-3-haiku-20240307': 0.25,
+      'claude-3-5-haiku-20241022': 0.25,
     };
     return (tokens / 1_000_000) * (pricing[model] || 3.00);
   }
