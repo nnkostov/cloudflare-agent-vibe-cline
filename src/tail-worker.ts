@@ -1,7 +1,7 @@
 import type { Env } from './types';
 
 interface TailEvent {
-  scriptName: string;
+  scriptName: string;``
   outcome: 'ok' | 'exception' | 'exceededCpu' | 'canceled' | 'unknown';
   eventTimestamp: number;
   event: {

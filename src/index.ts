@@ -5,7 +5,7 @@ import { PerformanceMonitor } from './utils/performanceMonitor';
 import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 
 // Re-export the Durable Object
-export { default as GitHubAgent } from './agents/GitHubAgent-fixed-comprehensive';
+export { default as GitHubAgent } from './agents/GitHubAgent';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
