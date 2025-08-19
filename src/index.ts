@@ -1116,34 +1116,72 @@ class WorkerService extends BaseService {
       // Enhanced batch processing - process up to 30 repositories
       const BATCH_SIZE = 30;
       const DELAY_BETWEEN_ANALYSES = 2000; // 2 seconds
-      const MAX_RETRIES = 2;
       
       const id = this.env.GITHUB_AGENT.idFromName('main');
       const agent = this.env.GITHUB_AGENT.get(id);
       
-      // Store batch progress in Durable Object state for tracking
+      // Store batch progress for tracking
       const batchId = `batch_${Date.now()}`;
       
-      // Start batch analysis using the Durable Object's batch processing
-      const repositoryNames = reposNeedingAnalysis.slice(0, BATCH_SIZE).map(r => r.full_name);
+      // Process repositories directly
+      const repositoriesToAnalyze = reposNeedingAnalysis.slice(0, BATCH_SIZE);
+      const results = [];
       
-      // Call the Durable Object's startBatchAnalysis method
-      const startBatchResponse = await agent.fetch(new Request('http://internal/batch/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          batchId,
-          repositories: repositoryNames
-        })
-      }));
+      console.log(`[${batchId}] Starting batch analysis of ${repositoriesToAnalyze.length} repositories`);
       
-      if (!startBatchResponse.ok) {
-        const error = await startBatchResponse.text();
-        console.error(`[${batchId}] Failed to start batch analysis:`, error);
-        throw new Error(`Failed to start batch analysis: ${error}`);
-      } else {
-        console.log(`[${batchId}] Batch analysis started successfully`);
+      // Analyze each repository
+      for (let i = 0; i < repositoriesToAnalyze.length; i++) {
+        const repo = repositoriesToAnalyze[i];
+        try {
+          console.log(`[${batchId}] Analyzing ${i + 1}/${repositoriesToAnalyze.length}: ${repo.full_name}`);
+          
+          // Call the Durable Object's analyze endpoint
+          const analyzeResponse = await agent.fetch(new Request('http://internal/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repoId: repo.id,
+              repoOwner: repo.owner,
+              repoName: repo.name,
+              force: force
+            })
+          }));
+          
+          if (analyzeResponse.ok) {
+            const result = await analyzeResponse.json() as any;
+            results.push({
+              repository: repo.full_name,
+              status: 'completed',
+              analysis: result.analysis
+            });
+          } else {
+            const error = await analyzeResponse.text();
+            console.error(`[${batchId}] Failed to analyze ${repo.full_name}:`, error);
+            results.push({
+              repository: repo.full_name,
+              status: 'failed',
+              error: error
+            });
+          }
+          
+          // Add delay between analyses to avoid rate limiting
+          if (i < repositoriesToAnalyze.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ANALYSES));
+          }
+        } catch (error) {
+          console.error(`[${batchId}] Error analyzing ${repo.full_name}:`, error);
+          results.push({
+            repository: repo.full_name,
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
       }
+      
+      const successCount = results.filter(r => r.status === 'completed').length;
+      const failedCount = results.filter(r => r.status !== 'completed').length;
+      
+      console.log(`[${batchId}] Batch analysis completed: ${successCount} successful, ${failedCount} failed`);
       
       return this.jsonResponse({
         message: 'Enhanced batch analysis started',
@@ -1154,7 +1192,6 @@ class WorkerService extends BaseService {
         queued: Math.min(BATCH_SIZE, reposNeedingAnalysis.length),
         batchSize: BATCH_SIZE,
         delayBetweenAnalyses: `${DELAY_BETWEEN_ANALYSES / 1000}s`,
-        maxRetries: MAX_RETRIES,
         estimatedCompletionTime: `${Math.round((Math.min(BATCH_SIZE, reposNeedingAnalysis.length) * DELAY_BETWEEN_ANALYSES) / 1000 / 60)} minutes`,
         repositories: reposNeedingAnalysis.slice(0, BATCH_SIZE).map(r => ({
           name: r.full_name,
