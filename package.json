@@ -1,6 +1,6 @@
 {
   "name": "github-ai-intelligence-agent",
-  "version": "2.0.48",
+  "version": "2.0.49",
   "description": "AI-powered GitHub repository intelligence agent for VC investment opportunities",
   "main": "src/index.ts",
   "scripts": {
