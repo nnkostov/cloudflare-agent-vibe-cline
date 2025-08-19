@@ -4,6 +4,14 @@ import { ClaudeService } from '../services/claude';
 import { StorageService } from '../services/storage-unified';
 import { RepoAnalyzer } from '../analyzers/repoAnalyzer-unified';
 import { CONFIG as Config } from '../types';
+import { 
+  BatchConfig, 
+  BatchHealth, 
+  BatchCheckpoint, 
+  EnhancedBatchProgress, 
+  DEFAULT_BATCH_CONFIG 
+} from '../types/batch';
+import { BatchProcessor } from './GitHubAgent-self-healing';
 
 interface ScanProgress {
   phase: string;
