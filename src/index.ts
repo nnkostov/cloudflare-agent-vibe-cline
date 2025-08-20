@@ -999,49 +999,7 @@ class WorkerService extends BaseService {
         batchId = null
       } = body;
       
-      const { StorageUnifiedService } = await import('./services/storage-unified');
-      const storage = new StorageUnifiedService(this.env);
-      
-      console.log(`Starting enhanced batch analysis for ${target} repositories... Force: ${force}`);
-      
-      // Get repositories that need analysis with priority ordering
-      let reposToAnalyze: any[] = [];
-      
-      if (target === 'visible' || target === 'all') {
-        // Get ALL repositories from ALL tiers with no artificial limits
-        const [tier1, tier2, tier3, trending] = await Promise.all([
-          storage.getReposByTier(1), // No limit - get ALL Tier 1 repositories
-          storage.getReposByTier(2), // No limit - get ALL Tier 2 repositories  
-          storage.getReposByTier(3), // No limit - get ALL Tier 3 repositories
-          storage.getHighGrowthRepos(30, 100), // Keep trending as supplementary
-        ]);
-        
-        console.log(`Repository counts: Tier 1: ${tier1.length}, Tier 2: ${tier2.length}, Tier 3: ${tier3.length}, Trending: ${trending.length}`);
-        
-        // Priority order: Tier 1 first, then Tier 2, then Tier 3, then trending
-        const allRepos = [...tier1, ...tier2, ...tier3, ...trending];
-        const uniqueRepos = new Map();
-        allRepos.forEach(repo => {
-          if (!uniqueRepos.has(repo.id)) {
-            uniqueRepos.set(repo.id, { ...repo, priority: this.getRepoPriority(repo) });
-          }
-        });
-        reposToAnalyze = Array.from(uniqueRepos.values())
-          .sort((a, b) => a.priority - b.priority); // Lower number = higher priority
-      } else if (target === 'tier1') {
-        const tier1Repos = await storage.getReposByTier(1); // No limit
-        reposToAnalyze = tier1Repos.map(repo => ({ ...repo, priority: 1 }));
-      } else if (target === 'tier2') {
-        const tier2Repos = await storage.getReposByTier(2); // No limit
-        reposToAnalyze = tier2Repos.map(repo => ({ ...repo, priority: 2 }));
-      } else if (target === 'tier3') {
-        const tier3Repos = await storage.getReposByTier(3); // No limit
-        reposToAnalyze = tier3Repos.map(repo => ({ ...repo, priority: 3 }));
-      }
-      
-      // Use SQL-based filtering to avoid "Too many API requests" error
-      // This is much more efficient than checking each repository individually
-      const reposNeedingAnalysis = [];
+      console.log(`Starting batch analysis for ${target} repositories... Force: ${force}, ChunkSize: ${chunkSize}, StartIndex: ${startIndex}`);
       
       // Build SQL query to find repositories needing analysis based on tier thresholds
       let tierConditions = [];
@@ -1061,9 +1019,19 @@ class WorkerService extends BaseService {
         ];
       }
       
+      // Add target filtering
+      let targetFilter = '';
+      if (target === 'tier1') {
+        targetFilter = ' AND rt.tier = 1';
+      } else if (target === 'tier2') {
+        targetFilter = ' AND rt.tier = 2';
+      } else if (target === 'tier3') {
+        targetFilter = ' AND rt.tier = 3';
+      }
+      
       // Get repository IDs that need analysis using efficient SQL
       const needingAnalysisQuery = `
-        SELECT DISTINCT r.id, r.full_name, rt.tier, r.stars
+        SELECT DISTINCT r.id, r.full_name, r.owner, r.name, rt.tier, r.stars
         FROM repositories r
         JOIN repo_tiers rt ON r.id = rt.repo_id
         LEFT JOIN (
@@ -1073,24 +1041,15 @@ class WorkerService extends BaseService {
         ) a ON r.id = a.repo_id
         WHERE r.is_archived = 0 AND r.is_fork = 0
           AND (${tierConditions.join(' OR ')})
+          ${targetFilter}
         ORDER BY rt.tier ASC, r.stars DESC
         LIMIT 100
       `;
       
       const needingAnalysisResults = await this.env.DB.prepare(needingAnalysisQuery).all();
+      const reposNeedingAnalysis = needingAnalysisResults.results || [];
       
-      // Map the results to match the expected format
-      for (const row of needingAnalysisResults.results || []) {
-        const repo = reposToAnalyze.find(r => r.id === (row as any).id);
-        if (repo) {
-          reposNeedingAnalysis.push({
-            ...repo,
-            priority: this.getRepoPriority(repo)
-          });
-        }
-      }
-      
-      console.log(`Found ${reposNeedingAnalysis.length} repositories needing analysis (${reposToAnalyze.length} total, force: ${force})`);
+      console.log(`Found ${reposNeedingAnalysis.length} repositories needing analysis (force: ${force})`);
       
       // If no repos need analysis, provide helpful feedback
       if (reposNeedingAnalysis.length === 0) {
@@ -1100,7 +1059,7 @@ class WorkerService extends BaseService {
           message: 'No repositories need analysis at this time',
           batchId: null,
           target,
-          totalRepos: reposToAnalyze.length,
+          totalRepos: 0,
           needingAnalysis: 0,
           queued: 0,
           reason: force ? 
