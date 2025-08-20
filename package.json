@@ -1,6 +1,6 @@
 {
   "name": "github-ai-intelligence-agent",
-  "version": "2.0.62",
+  "version": "2.0.63",
   "description": "AI-powered GitHub repository intelligence agent for VC investment opportunities",
   "main": "src/index.ts",
   "scripts": {
@@ -9,7 +9,7 @@
     "dev:dashboard": "cd dashboard && npm run dev",
     "build": "npm run build:dashboard",
     "build:dashboard": "cd dashboard && npm run build",
-    "deploy": "node scripts/auto-version.js && npm run build:dashboard && wrangler deploy",
+    "deploy": "node scripts/auto-version.js && npm run build:dashboard && wrangler deploy --env=\"\"",
     "test": "vitest",
     "test:ci": "vitest run",
     "test:enhanced": "node test-enhanced-system.js",
