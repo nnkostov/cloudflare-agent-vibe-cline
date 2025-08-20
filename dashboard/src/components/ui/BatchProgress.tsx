@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, Clock, Loader2, AlertCircle, StopCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -17,6 +17,9 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
     successCount: 0,
     failedCount: 0
   });
+  
+  // Use a ref to track if we should stop
+  const shouldStopRef = useRef(false);
 
   useEffect(() => {
     // If no batchId, set status to idle
@@ -29,18 +32,23 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
         successCount: 0,
         failedCount: 0
       });
+      shouldStopRef.current = false;
       return;
     }
 
     // When batchId is set, start processing
     setStatus('running');
+    shouldStopRef.current = false;
     processNextChunk();
   }, [batchId]);
 
   const processNextChunk = async (startIndex = 0) => {
-    // Check current status value
-    const currentStatus = status;
-    if (currentStatus === 'stopping' || !batchId) {
+    // Check if we should stop
+    if (shouldStopRef.current || !batchId) {
+      if (shouldStopRef.current) {
+        setStatus('completed');
+        onComplete();
+      }
       return;
     }
 
@@ -81,8 +89,14 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
   };
 
   const handleStop = () => {
+    shouldStopRef.current = true;
     setStatus('stopping');
-    // The next chunk won't be processed due to status check
+    // The next chunk won't be processed due to the ref check
+    // Force completion after a short delay
+    setTimeout(() => {
+      setStatus('completed');
+      onComplete();
+    }, 500);
   };
 
   // Handle idle state (no active batch)
