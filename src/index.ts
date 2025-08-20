@@ -991,7 +991,13 @@ class WorkerService extends BaseService {
   private async handleBatchAnalyze(request: Request): Promise<Response> {
     return this.handleError(async () => {
       const body = await request.json() as any;
-      const { target = 'visible', force = false } = body;
+      const { 
+        target = 'visible', 
+        force = false,
+        chunkSize = 5,
+        startIndex = 0,
+        batchId = null
+      } = body;
       
       const { StorageUnifiedService } = await import('./services/storage-unified');
       const storage = new StorageUnifiedService(this.env);
@@ -1121,10 +1127,10 @@ class WorkerService extends BaseService {
       const agent = this.env.GITHUB_AGENT.get(id);
       
       // Store batch progress for tracking
-      const batchId = `batch_${Date.now()}`;
+      const currentBatchId = batchId || `batch_${Date.now()}`;
       
-      // Process repositories directly
-      const repositoriesToAnalyze = reposNeedingAnalysis.slice(0, BATCH_SIZE);
+      // Process repositories directly - support chunking
+      const repositoriesToAnalyze = reposNeedingAnalysis.slice(startIndex, startIndex + chunkSize);
       const results = [];
       
       console.log(`[${batchId}] Starting batch analysis of ${repositoriesToAnalyze.length} repositories`);
@@ -1183,21 +1189,26 @@ class WorkerService extends BaseService {
       
       console.log(`[${batchId}] Batch analysis completed: ${successCount} successful, ${failedCount} failed`);
       
+      // Return chunked response
+      const hasMore = startIndex + chunkSize < reposNeedingAnalysis.length;
+      const nextIndex = startIndex + chunkSize;
+      
       return this.jsonResponse({
-        message: 'Enhanced batch analysis started',
-        batchId,
+        message: 'Chunk processed',
+        batchId: currentBatchId,
         target,
-        totalRepos: reposToAnalyze.length,
-        needingAnalysis: reposNeedingAnalysis.length,
-        queued: Math.min(BATCH_SIZE, reposNeedingAnalysis.length),
-        batchSize: BATCH_SIZE,
-        delayBetweenAnalyses: `${DELAY_BETWEEN_ANALYSES / 1000}s`,
-        estimatedCompletionTime: `${Math.round((Math.min(BATCH_SIZE, reposNeedingAnalysis.length) * DELAY_BETWEEN_ANALYSES) / 1000 / 60)} minutes`,
-        repositories: reposNeedingAnalysis.slice(0, BATCH_SIZE).map(r => ({
-          name: r.full_name,
-          priority: r.priority,
-          tier: r.tier
-        }))
+        processed: repositoriesToAnalyze.length,
+        total: reposNeedingAnalysis.length,
+        currentChunk: repositoriesToAnalyze.map(r => r.full_name),
+        hasMore,
+        nextIndex: hasMore ? nextIndex : null,
+        results,
+        chunkInfo: {
+          startIndex,
+          chunkSize,
+          actualProcessed: successCount,
+          failed: failedCount
+        }
       });
     }, 'enhanced batch analyze repositories');
   }

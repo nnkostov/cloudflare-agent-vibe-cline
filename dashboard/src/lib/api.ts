@@ -230,15 +230,39 @@ class ApiClient {
     });
   }
 
-  // Batch analysis
-  triggerBatchAnalysis = async (target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible', force: boolean = false) => {
+  // Batch analysis - now supports chunked processing
+  triggerBatchAnalysis = async (
+    target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible', 
+    force: boolean = false,
+    chunkSize: number = 5,
+    startIndex: number = 0,
+    batchId: string | null = null
+  ) => {
     return this.request<{
       message: string;
       batchId?: string | null;
       target: string;
-      totalRepos: number;
-      needingAnalysis: number;
-      queued: number;
+      processed?: number;
+      total?: number;
+      currentChunk?: string[];
+      hasMore?: boolean;
+      nextIndex?: number | null;
+      results?: Array<{
+        repository: string;
+        status: string;
+        analysis?: any;
+        error?: string;
+      }>;
+      chunkInfo?: {
+        startIndex: number;
+        chunkSize: number;
+        actualProcessed: number;
+        failed: number;
+      };
+      // Legacy fields for backward compatibility
+      totalRepos?: number;
+      needingAnalysis?: number;
+      queued?: number;
       batchSize?: number;
       delayBetweenAnalyses?: string;
       maxRetries?: number;
@@ -251,14 +275,14 @@ class ApiClient {
         tier3: string;
         totalRemaining: number;
       };
-      repositories: Array<{
+      repositories?: Array<{
         name: string;
         priority?: number;
         tier?: number;
       }> | string[];
     }>('/analyze/batch', {
       method: 'POST',
-      body: JSON.stringify({ target, force }),
+      body: JSON.stringify({ target, force, chunkSize, startIndex, batchId }),
     });
   }
 
