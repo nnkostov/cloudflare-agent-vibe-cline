@@ -184,6 +184,7 @@ class WorkerService extends BaseService {
       '/logs/critical-alerts': () => this.handleCriticalAlerts(request),
       '/api-metrics': () => this.handleAPIMetrics(request),
       '/analyze/batch': () => this.handleBatchAnalyze(request),
+      '/analyze/single': () => this.handleSingleAnalyze(request),
       '/analyze/batch/status': () => this.handleBatchStatus(request),
       '/analyze/batch/stop': () => this.handleBatchStop(request),
       '/analyze/batch/clear': () => this.handleBatchClear(),
@@ -1078,98 +1079,88 @@ class WorkerService extends BaseService {
         });
       }
       
-      // Enhanced batch processing - process up to 30 repositories
-      const BATCH_SIZE = 30;
-      const DELAY_BETWEEN_ANALYSES = 2000; // 2 seconds
-      
-      const id = this.env.GITHUB_AGENT.idFromName('main');
-      const agent = this.env.GITHUB_AGENT.get(id);
-      
-      // Store batch progress for tracking
+      // Return the list of repositories that need analysis
+      // The frontend will handle the actual processing in chunks
       const currentBatchId = batchId || `batch_${Date.now()}`;
       
-      // Process repositories directly - support chunking
-      const repositoriesToAnalyze = reposNeedingAnalysis.slice(startIndex, startIndex + chunkSize);
-      const results = [];
-      
-      console.log(`[${batchId}] Starting batch analysis of ${repositoriesToAnalyze.length} repositories`);
-      
-      // Analyze each repository
-      for (let i = 0; i < repositoriesToAnalyze.length; i++) {
-        const repo = repositoriesToAnalyze[i];
-        try {
-          console.log(`[${batchId}] Analyzing ${i + 1}/${repositoriesToAnalyze.length}: ${repo.full_name}`);
-          
-          // Call the Durable Object's analyze endpoint
-          const analyzeResponse = await agent.fetch(new Request('http://internal/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoId: repo.id,
-              repoOwner: repo.owner,
-              repoName: repo.name,
-              force: force
-            })
-          }));
-          
-          if (analyzeResponse.ok) {
-            const result = await analyzeResponse.json() as any;
-            results.push({
-              repository: repo.full_name,
-              status: 'completed',
-              analysis: result.analysis
-            });
-          } else {
-            const error = await analyzeResponse.text();
-            console.error(`[${batchId}] Failed to analyze ${repo.full_name}:`, error);
-            results.push({
-              repository: repo.full_name,
-              status: 'failed',
-              error: error
-            });
-          }
-          
-          // Add delay between analyses to avoid rate limiting
-          if (i < repositoriesToAnalyze.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ANALYSES));
-          }
-        } catch (error) {
-          console.error(`[${batchId}] Error analyzing ${repo.full_name}:`, error);
-          results.push({
-            repository: repo.full_name,
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
-        }
-      }
-      
-      const successCount = results.filter(r => r.status === 'completed').length;
-      const failedCount = results.filter(r => r.status !== 'completed').length;
-      
-      console.log(`[${batchId}] Batch analysis completed: ${successCount} successful, ${failedCount} failed`);
-      
-      // Return chunked response
+      // For chunking support, slice the results
+      const repositoriesToProcess = reposNeedingAnalysis.slice(startIndex, startIndex + chunkSize);
       const hasMore = startIndex + chunkSize < reposNeedingAnalysis.length;
       const nextIndex = startIndex + chunkSize;
       
       return this.jsonResponse({
-        message: 'Chunk processed',
+        message: 'Repositories identified for analysis',
         batchId: currentBatchId,
         target,
-        processed: repositoriesToAnalyze.length,
+        processed: 0, // Will be updated by frontend as it processes
         total: reposNeedingAnalysis.length,
-        currentChunk: repositoriesToAnalyze.map(r => r.full_name),
+        currentChunk: repositoriesToProcess.map((r: any) => r.full_name),
         hasMore,
         nextIndex: hasMore ? nextIndex : null,
-        results,
+        repositories: repositoriesToProcess.map((r: any) => ({
+          id: r.id,
+          full_name: r.full_name,
+          owner: r.owner,
+          name: r.name,
+          tier: r.tier,
+          stars: r.stars
+        })),
         chunkInfo: {
           startIndex,
           chunkSize,
-          actualProcessed: successCount,
-          failed: failedCount
+          actualProcessed: 0,
+          failed: 0
         }
       });
     }, 'enhanced batch analyze repositories');
+  }
+
+  /**
+   * Handle single repository analysis
+   */
+  private async handleSingleAnalyze(request: Request): Promise<Response> {
+    return this.handleError(async () => {
+      const body = await request.json() as any;
+      const { repoId, repoOwner, repoName, force = false } = body;
+      
+      if (!repoId || !repoOwner || !repoName) {
+        return this.jsonResponse({ 
+          error: 'Missing required parameters: repoId, repoOwner, repoName' 
+        }, 400);
+      }
+      
+      // Forward to Durable Object for analysis
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      const analyzeResponse = await agent.fetch(new Request('http://internal/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoId,
+          repoOwner,
+          repoName,
+          force
+        })
+      }));
+      
+      if (!analyzeResponse.ok) {
+        const error = await analyzeResponse.text();
+        return this.jsonResponse({ 
+          error: 'Failed to analyze repository',
+          details: error,
+          repository: `${repoOwner}/${repoName}`
+        }, analyzeResponse.status);
+      }
+      
+      const result = await analyzeResponse.json() as any;
+      return this.jsonResponse({
+        success: true,
+        repository: `${repoOwner}/${repoName}`,
+        analysis: result.analysis,
+        cached: result.cached || false
+      });
+    }, 'analyze single repository');
   }
 
   /**

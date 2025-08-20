@@ -276,10 +276,13 @@ class ApiClient {
         totalRemaining: number;
       };
       repositories?: Array<{
+        id: string;
+        full_name: string;
+        owner: string;
         name: string;
-        priority?: number;
-        tier?: number;
-      }> | string[];
+        tier: number;
+        stars: number;
+      }>;
     }>('/analyze/batch', {
       method: 'POST',
       body: JSON.stringify({ target, force, chunkSize, startIndex, batchId }),

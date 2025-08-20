@@ -53,29 +53,82 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
     }
 
     try {
+      // First, get the list of repositories to analyze
       const response = await api.triggerBatchAnalysis('visible', false, 5, startIndex, batchId);
       
-      // Update progress with null checks
+      // If no repositories need analysis, we're done
+      if (!response.repositories || response.repositories.length === 0) {
+        if (response.reason) {
+          console.log('No repositories to analyze:', response.reason);
+        }
+        setStatus('completed');
+        onComplete();
+        return;
+      }
+      
+      // Update total count
       setProgress(prev => ({
-        processed: prev.processed + (response.processed || 0),
+        ...prev,
         total: response.total || prev.total,
-        currentChunk: response.currentChunk || [],
-        successCount: prev.successCount + (response.chunkInfo?.actualProcessed || 0),
-        failedCount: prev.failedCount + (response.chunkInfo?.failed || 0)
+        currentChunk: response.currentChunk || []
       }));
-
+      
+      // Now analyze each repository in the chunk
+      let successCount = 0;
+      let failedCount = 0;
+      
+      for (const repo of response.repositories) {
+        // Check if we should stop
+        if (shouldStopRef.current) {
+          setStatus('completed');
+          onComplete();
+          return;
+        }
+        
+        try {
+          // Call the single analysis endpoint
+          const analysisResponse = await fetch('/api/analyze/single', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repoId: repo.id,
+              repoOwner: repo.owner,
+              repoName: repo.name,
+              force: false
+            })
+          });
+          
+          if (analysisResponse.ok) {
+            successCount++;
+          } else {
+            failedCount++;
+            console.error(`Failed to analyze ${repo.full_name}`);
+          }
+          
+          // Update progress after each repository
+          setProgress(prev => ({
+            ...prev,
+            processed: prev.processed + 1,
+            successCount: prev.successCount + (analysisResponse.ok ? 1 : 0),
+            failedCount: prev.failedCount + (analysisResponse.ok ? 0 : 1)
+          }));
+          
+          // Small delay between analyses to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error) {
+          console.error(`Error analyzing ${repo.full_name}:`, error);
+          failedCount++;
+          setProgress(prev => ({
+            ...prev,
+            processed: prev.processed + 1,
+            failedCount: prev.failedCount + 1
+          }));
+        }
+      }
+      
       // If there are more chunks, process the next one
       if (response.hasMore && response.nextIndex !== null && response.nextIndex !== undefined) {
-        // Small delay before next chunk
-        setTimeout(() => {
-          // Re-check status in the timeout
-          setStatus(prevStatus => {
-            if (prevStatus !== 'stopping') {
-              processNextChunk(response.nextIndex as number);
-            }
-            return prevStatus;
-          });
-        }, 1000);
+        processNextChunk(response.nextIndex as number);
       } else {
         // All chunks processed
         setStatus('completed');
