@@ -138,6 +138,28 @@ export class StorageService extends BaseService {
     return result ? this.parseAnalysis(result) : null;
   }
 
+  async getLatestAnalysisWithRepo(repoId: string): Promise<{ analysis: Analysis; repository: Repository } | null> {
+    const [analysisResult, repoResult] = await Promise.all([
+      this.dbFirst<any>(
+        'SELECT * FROM analyses WHERE repo_id = ? ORDER BY created_at DESC LIMIT 1',
+        repoId
+      ),
+      this.dbFirst<any>(
+        'SELECT * FROM repositories WHERE id = ?',
+        repoId
+      )
+    ]);
+
+    if (!analysisResult || !repoResult) {
+      return null;
+    }
+
+    return {
+      analysis: this.parseAnalysis(analysisResult),
+      repository: this.parseRepository(repoResult)
+    };
+  }
+
   async hasRecentAnalysis(repoId: string, hoursThreshold: number = 168): Promise<boolean> {
     const result = await this.dbFirst<{ count: number }>(
       `SELECT COUNT(*) as count FROM analyses 

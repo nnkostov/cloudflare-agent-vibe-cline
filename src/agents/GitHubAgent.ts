@@ -41,10 +41,47 @@ export class GitHubAgent {
     });
   }
 
+  /**
+   * Transform analysis data from nested structure to flat structure for frontend
+   */
+  private transformAnalysisForFrontend(analysis: any): any {
+    if (!analysis) return null;
+    
+    return {
+      repo_id: analysis.repo_id,
+      // Flatten scores
+      investment_score: analysis.scores?.investment || 0,
+      innovation_score: analysis.scores?.innovation || 0,
+      team_score: analysis.scores?.team || 0,
+      market_score: analysis.scores?.market || 0,
+      // Map metadata.timestamp to analyzed_at
+      analyzed_at: analysis.metadata?.timestamp || analysis.created_at,
+      // Keep other fields as is
+      recommendation: analysis.recommendation,
+      summary: analysis.summary,
+      strengths: analysis.strengths,
+      risks: analysis.risks,
+      questions: analysis.questions,
+      // Include enhanced fields if available
+      technical_moat: analysis.scores?.technical_moat,
+      scalability: analysis.scores?.scalability,
+      growth_prediction: analysis.scores?.growth_prediction,
+      // Include metadata
+      model: analysis.metadata?.model,
+      cost: analysis.metadata?.cost
+    };
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     
     try {
+      // Check for dynamic routes first
+      const analyzeMatch = url.pathname.match(/^\/analyze\/([^\/]+)\/([^\/]+)$/);
+      if (analyzeMatch) {
+        return this.handleAnalyzeByPath(analyzeMatch[1], analyzeMatch[2]);
+      }
+
       const handlers: Record<string, () => Promise<Response>> = {
         '/scan': () => this.handleScan(request),
         '/scan/comprehensive': () => this.handleComprehensiveScan(),
@@ -114,6 +151,65 @@ export class GitHubAgent {
   }
 
   /**
+   * Handle analyze request by path (GET /analyze/:owner/:repo)
+   */
+  private async handleAnalyzeByPath(owner: string, name: string): Promise<Response> {
+    // First try to find in database
+    let repo = await this.storage.getRepositoryByName(owner, name);
+    
+    if (!repo) {
+      // If not found, fetch from GitHub and save
+      try {
+        repo = await this.github.getRepoDetails(owner, name);
+        await this.storage.saveRepository(repo);
+        console.log(`Repository ${owner}/${name} fetched from GitHub and saved`);
+      } catch (error) {
+        return this.jsonResponse({ 
+          error: `Repository ${owner}/${name} not found: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        }, 404);
+      }
+    }
+    
+    // Check if we have a recent analysis
+    const analysisWithRepo = await this.storage.getLatestAnalysisWithRepo(repo.id);
+    if (analysisWithRepo) {
+      return this.jsonResponse({
+        analysis: this.transformAnalysisForFrontend(analysisWithRepo.analysis),
+        repository: analysisWithRepo.repository
+      });
+    }
+    
+    // If no analysis exists, perform one
+    try {
+      await this.analyzeRepository(repo);
+      
+      // Get the complete analysis with repository data
+      const newAnalysisWithRepo = await this.storage.getLatestAnalysisWithRepo(repo.id);
+      
+      if (newAnalysisWithRepo) {
+        return this.jsonResponse({
+          analysis: this.transformAnalysisForFrontend(newAnalysisWithRepo.analysis),
+          repository: newAnalysisWithRepo.repository
+        });
+      } else {
+        // Fallback if something went wrong
+        return this.jsonResponse({
+          analysis: null,
+          repository: repo
+        });
+      }
+    } catch (error) {
+      console.error(`Error analyzing ${repo.full_name}:`, error);
+      // Return repository data even if analysis failed
+      return this.jsonResponse({
+        analysis: null,
+        repository: repo,
+        error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
    * Handle analyze request
    */
   private async handleAnalyze(request: Request): Promise<Response> {
@@ -153,33 +249,37 @@ export class GitHubAgent {
     
     // Check cache
     if (!force && await this.storage.hasRecentAnalysis(repo.id)) {
-      const analysis = await this.storage.getLatestAnalysis(repo.id);
-      return this.jsonResponse({ 
-        message: 'Using cached analysis', 
-        analysis,
-        repository: {
-          id: repo.id,
-          full_name: repo.full_name,
-          stars: repo.stars,
-          language: repo.language
-        }
-      });
+      const analysisWithRepo = await this.storage.getLatestAnalysisWithRepo(repo.id);
+      if (analysisWithRepo) {
+        return this.jsonResponse({ 
+          message: 'Using cached analysis', 
+          analysis: this.transformAnalysisForFrontend(analysisWithRepo.analysis),
+          repository: analysisWithRepo.repository
+        });
+      }
     }
     
     // Perform analysis
     try {
       const analysis = await this.analyzeRepository(repo);
       
-      return this.jsonResponse({ 
-        message: 'Analysis completed',
-        analysis,
-        repository: {
-          id: repo.id,
-          full_name: repo.full_name,
-          stars: repo.stars,
-          language: repo.language
-        }
-      });
+      // Get the complete analysis with repository data
+      const analysisWithRepo = await this.storage.getLatestAnalysisWithRepo(repo.id);
+      
+      if (analysisWithRepo) {
+        return this.jsonResponse({ 
+          message: 'Analysis completed',
+          analysis: this.transformAnalysisForFrontend(analysisWithRepo.analysis),
+          repository: analysisWithRepo.repository
+        });
+      } else {
+        // Fallback if something went wrong
+        return this.jsonResponse({ 
+          message: 'Analysis completed',
+          analysis,
+          repository: repo
+        });
+      }
     } catch (error) {
       console.error(`Error analyzing ${repo.full_name}:`, error);
       return this.jsonResponse({ 

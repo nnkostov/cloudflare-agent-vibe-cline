@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clock, BarChart3, Target } from 'lucide-react';
 import { api } from '@/lib/api';
