@@ -273,7 +273,8 @@ export class GitHubAgent {
         }
         
         await this.analyzeRepository(repo);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit
+        // Reduced delay - frontend handles parallel processing with rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
       } catch (error) {
         console.error(`Error analyzing ${repo.full_name}:`, error);
       }

@@ -13,20 +13,8 @@ export default function Controls() {
   const [forceMode, setForceMode] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   
-  // Initialize activeBatchId from localStorage
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(() => {
-    const storedBatchId = localStorage.getItem('activeBatchId');
-    return storedBatchId || null;
-  });
-
-  // Update localStorage whenever activeBatchId changes
-  useEffect(() => {
-    if (activeBatchId) {
-      localStorage.setItem('activeBatchId', activeBatchId);
-    } else {
-      localStorage.removeItem('activeBatchId');
-    }
-  }, [activeBatchId]);
+  // Initialize activeBatchId - don't persist across page loads
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
 
   const { data: status, error: statusError } = useQuery({
     queryKey: ['status'],
