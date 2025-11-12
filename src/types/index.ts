@@ -173,6 +173,8 @@ export interface Analysis {
     cost: number;
     timestamp: string;
     tokens_used?: number;
+    error?: string;
+    fallback?: boolean;
   };
 }
 

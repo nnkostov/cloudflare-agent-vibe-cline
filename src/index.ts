@@ -188,6 +188,8 @@ class WorkerService extends BaseService {
       '/analyze/batch/status': () => this.handleBatchStatus(request),
       '/analyze/batch/stop': () => this.handleBatchStop(request),
       '/analyze/batch/clear': () => this.handleBatchClear(),
+      '/batch/active': () => this.handleGetActiveBatch(),
+      '/batch/history': () => this.handleGetBatchHistory(),
       '/analysis/stats': () => this.handleAnalysisStats(),
       '/worker-metrics': () => this.handleWorkerMetrics(),
       '/version': () => this.handleVersion(),
@@ -1867,5 +1869,49 @@ class WorkerService extends BaseService {
         timestamp: new Date().toISOString()
       });
     }, 'get version information');
+  }
+
+  /**
+   * Get currently active batch from Durable Object
+   */
+  private async handleGetActiveBatch(): Promise<Response> {
+    return this.handleError(async () => {
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      const response = await agent.fetch(new Request('http://internal/batch/active'));
+      
+      if (!response.ok) {
+        const error = await response.text();
+        return this.jsonResponse({ 
+          error: 'Failed to get active batch', 
+          details: error 
+        }, response.status);
+      }
+      
+      return response;
+    }, 'get active batch');
+  }
+
+  /**
+   * Get batch history from Durable Object
+   */
+  private async handleGetBatchHistory(): Promise<Response> {
+    return this.handleError(async () => {
+      const id = this.env.GITHUB_AGENT.idFromName('main');
+      const agent = this.env.GITHUB_AGENT.get(id);
+      
+      const response = await agent.fetch(new Request('http://internal/batch/history'));
+      
+      if (!response.ok) {
+        const error = await response.text();
+        return this.jsonResponse({ 
+          error: 'Failed to get batch history', 
+          details: error 
+        }, response.status);
+      }
+      
+      return response;
+    }, 'get batch history');
   }
 }

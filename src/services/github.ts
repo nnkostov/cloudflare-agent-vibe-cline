@@ -33,9 +33,12 @@ export class GitHubService extends BaseService {
       return globalConnectionPool.withConnection(async () => {
         return withExponentialBackoff(async () => {
           try {
-            // Build search query - try a simpler approach
-            // GitHub search doesn't like complex OR queries, so let's search for the first topic only
-            const topicQuery = `topic:${topics[0]}`;
+            // Build search query - search across all topics
+            // GitHub search supports OR queries for topics
+            const topicQuery = topics.length > 0
+              ? '(' + topics.map(t => `topic:${t}`).join(' OR ') + ')'
+              : 'topic:ai'; // fallback to ai if no topics provided
+            
             const languageQuery = languages?.length 
               ? ' AND (' + languages.map(l => `language:${l}`).join(' OR ') + ')'
               : '';
@@ -56,7 +59,8 @@ export class GitHubService extends BaseService {
 
             console.log('GitHub search response:', {
               total_count: response.data.total_count,
-              items_returned: response.data.items.length
+              items_returned: response.data.items.length,
+              topics_searched: topics
             });
 
             return response.data.items.map(this.mapGitHubRepoToRepository);
@@ -66,7 +70,7 @@ export class GitHubService extends BaseService {
           }
         });
       });
-    }, { timeout: 30000 });
+    });
   }
 
   /**

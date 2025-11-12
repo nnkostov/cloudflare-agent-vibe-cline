@@ -67,7 +67,7 @@ export class GitHubAgent {
       scalability: analysis.scores?.scalability,
       growth_prediction: analysis.scores?.growth_prediction,
       // Include metadata
-      model: analysis.metadata?.model,
+      model_used: analysis.metadata?.model,
       cost: analysis.metadata?.cost
     };
   }
@@ -91,6 +91,9 @@ export class GitHubAgent {
         '/init': () => this.handleInit(),
         '/metrics': () => this.handleMetrics(request),
         '/tiers': () => this.handleTiers(request),
+        '/batch/active': () => this.handleGetActiveBatch(),
+        '/batch/status': () => this.handleGetBatchStatus(request),
+        '/batch/history': () => this.handleGetBatchHistory(),
       };
 
       const handler = handlers[url.pathname];
@@ -120,17 +123,26 @@ export class GitHubAgent {
    * Handle scheduled alarm
    */
   async alarm(): Promise<void> {
-    console.log('Running comprehensive scheduled scan...');
+    console.log('=== Running automated scheduled operations ===');
     
     try {
+      // Phase 1: Comprehensive repository scan (0-2 minutes)
+      console.log('Phase 1: Scanning for new repositories...');
       await this.comprehensiveScan();
+      
+      // Phase 2: Automated batch analysis (2-10 minutes)
+      console.log('Phase 2: Running automated batch analysis...');
+      await this.runAutomatedBatchAnalysis();
+      
+      console.log('=== Scheduled operations completed ===');
     } catch (error) {
-      console.error('Error in scheduled scan:', error);
+      console.error('Error in scheduled operations:', error);
     }
     
     // Schedule next run
     const nextRun = Date.now() + Config.github.scanInterval * 60 * 60 * 1000;
     await this.state.storage.setAlarm(nextRun);
+    console.log(`Next scheduled run: ${new Date(nextRun).toISOString()}`);
   }
 
   /**
@@ -259,9 +271,9 @@ export class GitHubAgent {
       }
     }
     
-    // Perform analysis
+    // Perform analysis (pass force parameter to bypass score check)
     try {
-      const analysis = await this.analyzeRepository(repo);
+      const analysis = await this.analyzeRepository(repo, force || false);
       
       // Get the complete analysis with repository data
       const analysisWithRepo = await this.storage.getLatestAnalysisWithRepo(repo.id);
@@ -384,16 +396,16 @@ export class GitHubAgent {
   /**
    * Analyze a single repository
    */
-  private async analyzeRepository(repo: Repository) {
-    console.log(`Analyzing repository: ${repo.full_name}`);
+  private async analyzeRepository(repo: Repository, forceAnalysis: boolean = false) {
+    console.log(`Analyzing repository: ${repo.full_name} (force: ${forceAnalysis})`);
     
     // Get initial score
     const score = await this.analyzer.analyze(repo);
     console.log(`Score for ${repo.full_name}: ${score.total}`);
     
-    // Check if worth deep analysis
-    if (!this.analyzer.isHighPotential(score)) {
-      console.log(`${repo.full_name} does not meet threshold for deep analysis`);
+    // Check if worth deep analysis (unless forced)
+    if (!forceAnalysis && !this.analyzer.isHighPotential(score)) {
+      console.log(`${repo.full_name} does not meet threshold for deep analysis (score: ${score.total})`);
       return null;
     }
     
@@ -505,6 +517,114 @@ export class GitHubAgent {
   }
 
   /**
+   * Get currently active batch (if any)
+   */
+  private async handleGetActiveBatch(): Promise<Response> {
+    // Get all batch keys
+    const allKeys = await this.state.storage.list({ prefix: 'batch:' });
+    
+    // Find active batches
+    for (const [key, value] of allKeys.entries()) {
+      const batch = value as any;
+      if (batch.status === 'active') {
+        // Check if batch is stale (no update in 5 minutes)
+        const lastUpdate = batch.lastUpdate || batch.startTime;
+        const isStale = Date.now() - lastUpdate > 5 * 60 * 1000;
+        
+        return this.jsonResponse({
+          batchId: batch.batchId,
+          type: batch.type,
+          status: isStale ? 'stale' : 'active',
+          progress: {
+            processed: batch.processed || 0,
+            total: batch.totalRepos || 0,
+            succeeded: batch.succeeded || 0,
+            failed: batch.failed || 0,
+            tierProgress: batch.tierProgress || null
+          },
+          startTime: batch.startTime,
+          lastUpdate: batch.lastUpdate,
+          isStale
+        });
+      }
+    }
+    
+    return this.jsonResponse({ 
+      batchId: null, 
+      message: 'No active batch' 
+    });
+  }
+
+  /**
+   * Get status of a specific batch
+   */
+  private async handleGetBatchStatus(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const batchId = url.searchParams.get('batchId');
+    
+    if (!batchId) {
+      return this.jsonResponse({ error: 'batchId parameter required' }, 400);
+    }
+    
+    const batch = await this.state.storage.get(`batch:${batchId}`) as any;
+    
+    if (!batch) {
+      return this.jsonResponse({ 
+        error: 'Batch not found',
+        batchId 
+      }, 404);
+    }
+    
+    return this.jsonResponse({
+      batchId: batch.batchId,
+      type: batch.type,
+      status: batch.status,
+      progress: {
+        processed: batch.processed || 0,
+        total: batch.totalRepos || 0,
+        succeeded: batch.succeeded || 0,
+        failed: batch.failed || 0,
+        tierProgress: batch.tierProgress || null
+      },
+      startTime: batch.startTime,
+      endTime: batch.endTime,
+      duration: batch.duration,
+      lastUpdate: batch.lastUpdate,
+      error: batch.error,
+      reason: batch.reason
+    });
+  }
+
+  /**
+   * Get batch history (last 10 batches)
+   */
+  private async handleGetBatchHistory(): Promise<Response> {
+    const allKeys = await this.state.storage.list({ prefix: 'batch:' });
+    const batches = [];
+    
+    for (const [key, value] of allKeys.entries()) {
+      batches.push(value);
+    }
+    
+    // Sort by start time, most recent first
+    batches.sort((a: any, b: any) => b.startTime - a.startTime);
+    
+    return this.jsonResponse({
+      batches: batches.slice(0, 10).map((b: any) => ({
+        batchId: b.batchId,
+        type: b.type,
+        status: b.status,
+        processed: b.processed || 0,
+        succeeded: b.succeeded || 0,
+        failed: b.failed || 0,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        duration: b.duration
+      }))
+    });
+  }
+
+  /**
    * Comprehensive repository scanning with tiered approach
    */
   private async comprehensiveScan(): Promise<void> {
@@ -538,6 +658,209 @@ export class GitHubAgent {
     await this.processTier1Repos();
     await this.processTier2Repos();
     await this.processTier3Repos();
+  }
+
+  /**
+   * Run automated batch analysis (called by alarm)
+   * Analyzes repositories that are stale or never analyzed
+   */
+  private async runAutomatedBatchAnalysis(): Promise<void> {
+    console.log('Starting automated batch analysis...');
+    
+    const batchId = `auto_${Date.now()}`;
+    const startTime = Date.now();
+    
+    try {
+      // Store batch state in Durable Object
+      await this.state.storage.put(`batch:${batchId}`, {
+        batchId,
+        type: 'automated',
+        startTime,
+        status: 'active',
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        tierProgress: {
+          tier1: { processed: 0, total: 0 },
+          tier2: { processed: 0, total: 0 },
+          tier3: { processed: 0, total: 0 }
+        },
+        lastUpdate: startTime
+      });
+      
+      // Get repositories needing analysis using same logic as /api/analyze/batch
+      const reposNeedingAnalysis = await this.getRepositoriesNeedingAnalysis('all', false);
+      
+      if (reposNeedingAnalysis.length === 0) {
+        console.log('No repositories need analysis at this time');
+        await this.state.storage.put(`batch:${batchId}`, {
+          batchId,
+          type: 'automated',
+          startTime,
+          status: 'completed',
+          processed: 0,
+          succeeded: 0,
+          failed: 0,
+          reason: 'No stale repositories found'
+        });
+        return;
+      }
+      
+      console.log(`Automated analysis: Processing ${reposNeedingAnalysis.length} repositories`);
+      
+      // Update batch with total counts
+      const tierCounts = { tier1: 0, tier2: 0, tier3: 0 };
+      reposNeedingAnalysis.forEach(r => {
+        if (r.tier === 1) tierCounts.tier1++;
+        if (r.tier === 2) tierCounts.tier2++;
+        if (r.tier === 3) tierCounts.tier3++;
+      });
+      
+      await this.state.storage.put(`batch:${batchId}`, {
+        batchId,
+        type: 'automated',
+        startTime,
+        status: 'active',
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        totalRepos: reposNeedingAnalysis.length,
+        tierProgress: {
+          tier1: { processed: 0, total: tierCounts.tier1 },
+          tier2: { processed: 0, total: tierCounts.tier2 },
+          tier3: { processed: 0, total: tierCounts.tier3 }
+        },
+        lastUpdate: Date.now()
+      });
+      
+      // Process repositories in chunks (to avoid CPU timeout)
+      const CHUNK_SIZE = 10; // Process 10 repos per chunk
+      let totalProcessed = 0;
+      let totalSucceeded = 0;
+      let totalFailed = 0;
+      
+      for (let i = 0; i < reposNeedingAnalysis.length && i < 30; i += CHUNK_SIZE) {
+        const chunk = reposNeedingAnalysis.slice(i, i + CHUNK_SIZE);
+        
+        for (const repoData of chunk) {
+          try {
+            const repo = await this.storage.getRepository(repoData.id);
+            if (!repo) {
+              console.log(`Repository ${repoData.id} not found, skipping`);
+              totalFailed++;
+              continue;
+            }
+            
+            // Analyze the repository
+            await this.analyzeRepository(repo);
+            totalSucceeded++;
+            
+            // Update batch progress in DO state
+            const batchState: any = await this.state.storage.get(`batch:${batchId}`);
+            if (batchState) {
+              totalProcessed++;
+              
+              // Update tier-specific progress
+              if (repoData.tier === 1) batchState.tierProgress.tier1.processed++;
+              if (repoData.tier === 2) batchState.tierProgress.tier2.processed++;
+              if (repoData.tier === 3) batchState.tierProgress.tier3.processed++;
+              
+              batchState.processed = totalProcessed;
+              batchState.succeeded = totalSucceeded;
+              batchState.failed = totalFailed;
+              batchState.lastUpdate = Date.now();
+              
+              await this.state.storage.put(`batch:${batchId}`, batchState);
+              
+              console.log(`Automated batch progress: ${totalProcessed}/${reposNeedingAnalysis.length} (Tier 1: ${batchState.tierProgress.tier1.processed}/${batchState.tierProgress.tier1.total}, Tier 2: ${batchState.tierProgress.tier2.processed}/${batchState.tierProgress.tier2.total}, Tier 3: ${batchState.tierProgress.tier3.processed}/${batchState.tierProgress.tier3.total})`);
+            }
+            
+            // Rate limiting between analyses
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (error) {
+            console.error(`Error analyzing ${repoData.full_name}:`, error);
+            totalFailed++;
+          }
+        }
+        
+        // Small delay between chunks
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Mark batch as completed
+      const finalState: any = await this.state.storage.get(`batch:${batchId}`);
+      if (finalState) {
+        finalState.status = 'completed';
+        finalState.endTime = Date.now();
+        finalState.duration = Date.now() - startTime;
+        await this.state.storage.put(`batch:${batchId}`, finalState);
+      }
+      
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      console.log(`Automated batch analysis completed in ${duration}s: ${totalSucceeded} succeeded, ${totalFailed} failed`);
+      
+    } catch (error) {
+      console.error('Error in automated batch analysis:', error);
+      
+      // Mark batch as failed
+      await this.state.storage.put(`batch:${batchId}`, {
+        batchId,
+        type: 'automated',
+        startTime,
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        endTime: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Get repositories that need analysis based on staleness thresholds
+   */
+  private async getRepositoriesNeedingAnalysis(
+    target: 'all' | 'tier1' | 'tier2' | 'tier3' = 'all',
+    force: boolean = false
+  ): Promise<Array<{ id: string; full_name: string; owner: string; name: string; tier: number; stars: number }>> {
+    // Build tier conditions based on force mode
+    let tierConditions = [];
+    if (force) {
+      tierConditions = [
+        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
+        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
+        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`
+      ];
+    } else {
+      tierConditions = [
+        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
+        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-240 hours')))`,
+        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-336 hours')))`
+      ];
+    }
+    
+    // Add target filtering
+    let targetFilter = '';
+    if (target === 'tier1') targetFilter = ' AND rt.tier = 1';
+    if (target === 'tier2') targetFilter = ' AND rt.tier = 2';
+    if (target === 'tier3') targetFilter = ' AND rt.tier = 3';
+    
+    const query = `
+      SELECT DISTINCT r.id, r.full_name, r.owner, r.name, rt.tier, r.stars
+      FROM repositories r
+      JOIN repo_tiers rt ON r.id = rt.repo_id
+      LEFT JOIN (
+        SELECT repo_id, MAX(created_at) as created_at
+        FROM analyses
+        GROUP BY repo_id
+      ) a ON r.id = a.repo_id
+      WHERE r.is_archived = 0 AND r.is_fork = 0
+        AND (${tierConditions.join(' OR ')})
+        ${targetFilter}
+      ORDER BY rt.tier ASC, r.stars DESC
+      LIMIT 100
+    `;
+    
+    const results = await this.env.DB.prepare(query).all();
+    return (results.results || []) as any[];
   }
 
   /**

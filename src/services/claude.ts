@@ -179,12 +179,21 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
     try {
       // Extract JSON from response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON in response');
+      if (!jsonMatch) {
+        console.warn(`[Claude] No JSON found in response for repo ${repoId}. Response length: ${response.length}`);
+        return this.createFallbackAnalysis(repoId, model, 'No valid JSON in Claude response');
+      }
       
       // Clean up the JSON string - remove control characters but preserve valid JSON structure
       const cleanJson = jsonMatch[0].replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
       
-      const parsed = JSON.parse(cleanJson);
+      let parsed;
+      try {
+        parsed = JSON.parse(cleanJson);
+      } catch (parseError) {
+        console.warn(`[Claude] Failed to parse JSON for repo ${repoId}: ${parseError}`);
+        return this.createFallbackAnalysis(repoId, model, 'Invalid JSON structure in response');
+      }
       
       const analysis: Analysis = {
         repo_id: repoId,
@@ -215,8 +224,39 @@ Focus on: technical architecture depth, scalability potential, developer ecosyst
       
       return analysis;
     } catch (error) {
-      throw new Error(`Failed to parse analysis: ${error}`);
+      console.error(`[Claude] Unexpected error parsing response for repo ${repoId}: ${error}`);
+      return this.createFallbackAnalysis(repoId, model, `Parsing error: ${error}`);
     }
+  }
+
+  /**
+   * Create a fallback analysis when Claude fails to return valid JSON
+   */
+  private createFallbackAnalysis(repoId: string, model: ClaudeModel, reason: string): Analysis {
+    console.log(`[Claude] Creating fallback analysis for repo ${repoId} due to: ${reason}`);
+    
+    return {
+      repo_id: repoId,
+      scores: {
+        investment: 0,
+        innovation: 0,
+        team: 0,
+        market: 0,
+      },
+      recommendation: 'pass',
+      summary: 'Analysis could not be completed due to content processing issues. This repository may contain content that prevents proper analysis.',
+      strengths: ['Unable to analyze - content processing failed'],
+      risks: ['Repository content could not be properly analyzed', reason],
+      questions: ['Manual review recommended for this repository'],
+      metadata: {
+        model,
+        cost: 0,
+        timestamp: new Date().toISOString(),
+        tokens_used: 0,
+        error: reason,
+        fallback: true,
+      },
+    };
   }
 
   /**

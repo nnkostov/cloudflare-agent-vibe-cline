@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clock, BarChart3, Target } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -13,8 +13,34 @@ export default function Controls() {
   const [forceMode, setForceMode] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   
-  // Initialize activeBatchId - don't persist across page loads
+  // Track active batch ID - check backend on mount for automated batches
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+
+  // Poll for active batches from backend (including automated ones)
+  const { data: activeBatch } = useQuery({
+    queryKey: ['active-batch'],
+    queryFn: async () => {
+      const response = await fetch('/api/batch/active');
+      if (!response.ok) return null;
+      return response.json();
+    },
+    refetchInterval: 5000, // Check every 5 seconds
+    retry: 1,
+  });
+
+  // Update activeBatchId when backend reports an active batch
+  useEffect(() => {
+    if (activeBatch?.batchId && activeBatch.status === 'active') {
+      if (activeBatchId !== activeBatch.batchId) {
+        setActiveBatchId(activeBatch.batchId);
+        console.log('[Auto-Discovery] Found active batch:', activeBatch.batchId, 
+          `Type: ${activeBatch.type}, Progress: ${activeBatch.progress?.processed}/${activeBatch.progress?.total}`);
+      }
+    } else if (activeBatch?.batchId === null && activeBatchId !== null) {
+      // No active batch on backend, clear local state
+      setActiveBatchId(null);
+    }
+  }, [activeBatch]);
 
   const { data: status, error: statusError } = useQuery({
     queryKey: ['status'],
@@ -25,7 +51,7 @@ export default function Controls() {
   const { data: analysisStats } = useQuery({
     queryKey: ['analysis-stats'],
     queryFn: api.getAnalysisStats,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: activeBatchId !== null ? 3000 : 30000, // 3s when batch active, 30s otherwise
     retry: 1,
   });
 
@@ -135,7 +161,16 @@ export default function Controls() {
       setActiveBatchId(data.batchId);
       
       // Enhanced success message with more details
-      const message = `Enhanced batch analysis started! Processing ${data.queued} repositories (${data.batchSize} max batch size, ${data.delayBetweenAnalyses} delays, ${data.maxRetries} max retries). Estimated completion: ${data.estimatedCompletionTime}.`;
+      const totalRepos = data.total || data.repositories?.length || 0;
+      const batchSize = 5; // Default batch size from backend
+      const delaySeconds = 2; // Default delay between analyses
+      const maxRetries = 3; // Default max retries
+      const estimatedMinutes = Math.ceil((totalRepos * delaySeconds) / 60);
+      const estimatedTime = estimatedMinutes > 60 ? 
+        `${Math.round(estimatedMinutes / 60)} hours` : 
+        `${estimatedMinutes} minutes`;
+      
+      const message = `Enhanced batch analysis started! Processing ${totalRepos} repositories (${batchSize} max batch size, ${delaySeconds}s delays, ${maxRetries} max retries). Estimated completion: ${estimatedTime}.`;
       
       setStatusMessage({
         type: 'success',

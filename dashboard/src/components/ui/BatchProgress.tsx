@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, Clock, Loader2, AlertCircle, StopCircle, Zap, RefreshCw, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface BatchProgressProps {
   batchId: string | null;
@@ -39,6 +40,7 @@ const classifyError = (status: number, error: any): { type: FailedRepo['errorTyp
 };
 
 export function BatchProgress({ batchId, onComplete, onError }: BatchProgressProps) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping' | 'completed'>('idle');
   const [progress, setProgress] = useState({
     processed: 0,
@@ -121,7 +123,7 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
             repoId: repo.id,
             repoOwner: repo.owner,
             repoName: repo.name,
-            force: false
+            force: true // Force analysis since these repos were already selected by staleness query
           })
         });
         
@@ -203,16 +205,24 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
 
   // Process repositories in parallel
   const processRepositoriesInParallel = async (repositories: any[]) => {
+    console.log(`[BatchProgress] Starting parallel processing for ${repositories.length} repositories`);
+    console.log('[BatchProgress] Repositories to process:', repositories.map(r => r.full_name));
+    
     const results: boolean[] = [];
     
     // Process in batches of PARALLEL_WORKERS
     for (let i = 0; i < repositories.length; i += BATCH_CONFIG.PARALLEL_WORKERS) {
-      if (shouldStopRef.current) break;
+      if (shouldStopRef.current) {
+        console.log('[BatchProgress] Stop requested, breaking loop');
+        break;
+      }
       
       const batch = repositories.slice(i, i + BATCH_CONFIG.PARALLEL_WORKERS);
+      console.log(`[BatchProgress] Processing batch ${Math.floor(i / BATCH_CONFIG.PARALLEL_WORKERS) + 1}, repos:`, batch.map(r => r.full_name));
       
       // Start all workers in parallel
       const promises = batch.map(async (repo, index) => {
+        console.log(`[BatchProgress] Starting worker ${index} for ${repo.full_name}`);
         // Stagger the start slightly to avoid thundering herd
         if (index > 0) {
           await new Promise(resolve => setTimeout(resolve, BATCH_CONFIG.DELAY_BETWEEN_REPOS * index));
@@ -221,7 +231,9 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
       });
       
       // Wait for all workers to complete
+      console.log('[BatchProgress] Waiting for batch to complete...');
       const batchResults = await Promise.all(promises);
+      console.log('[BatchProgress] Batch results:', batchResults);
       results.push(...batchResults);
       
       // Update progress for each completed repo
@@ -238,6 +250,9 @@ export function BatchProgress({ batchId, onComplete, onError }: BatchProgressPro
           };
         });
       });
+      
+      // Invalidate analysis stats to refresh tier counters after each batch
+      queryClient.invalidateQueries({ queryKey: ['analysis-stats'] });
     }
     
     return results;
