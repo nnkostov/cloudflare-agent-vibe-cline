@@ -1,6 +1,6 @@
-import type { Repository, Score, Env, SCORING, ClaudeModel } from '../types';
-import { BaseService } from '../services/base';
-import { SCORING as ScoringConfig, CONFIG } from '../types';
+import type { Repository, Score, Env, SCORING, ClaudeModel } from "../types";
+import { BaseService } from "../services/base";
+import { SCORING as ScoringConfig, CONFIG } from "../types";
 
 export class RepoAnalyzer extends BaseService {
   /**
@@ -8,16 +8,25 @@ export class RepoAnalyzer extends BaseService {
    */
   async analyze(repo: Repository): Promise<Score> {
     const factors = await this.calculateFactors(repo);
-    
+
     // Calculate weighted scores
-    const growth = this.weightedSum(factors.growth, ScoringConfig.factors.growth);
-    const engagement = this.weightedSum(factors.engagement, ScoringConfig.factors.engagement);
-    const quality = this.weightedSum(factors.quality, ScoringConfig.factors.quality);
-    
+    const growth = this.weightedSum(
+      factors.growth,
+      ScoringConfig.factors.growth,
+    );
+    const engagement = this.weightedSum(
+      factors.engagement,
+      ScoringConfig.factors.engagement,
+    );
+    const quality = this.weightedSum(
+      factors.quality,
+      ScoringConfig.factors.quality,
+    );
+
     // Calculate total score
     const total = this.weightedSum(
       { growth, engagement, quality },
-      ScoringConfig.weights
+      ScoringConfig.weights,
     );
 
     return {
@@ -25,13 +34,19 @@ export class RepoAnalyzer extends BaseService {
       growth: Math.round(growth),
       engagement: Math.round(engagement),
       quality: Math.round(quality),
-      factors: Object.entries(factors).reduce((acc, [category, values]) => ({
-        ...acc,
-        ...Object.entries(values).reduce((inner, [key, value]) => ({
-          ...inner,
-          [`${category}_${key}`]: Math.round(value)
-        }), {})
-      }), {})
+      factors: Object.entries(factors).reduce(
+        (acc, [category, values]) => ({
+          ...acc,
+          ...Object.entries(values).reduce(
+            (inner, [key, value]) => ({
+              ...inner,
+              [`${category}_${key}`]: Math.round(value),
+            }),
+            {},
+          ),
+        }),
+        {},
+      ),
     };
   }
 
@@ -41,35 +56,63 @@ export class RepoAnalyzer extends BaseService {
   private async calculateFactors(repo: Repository) {
     const ageInDays = this.getDaysSince(repo.created_at);
     const daysSinceUpdate = this.getDaysSince(repo.updated_at);
-    
+
     return {
       growth: {
-        stars: this.scoreByThresholds(repo.stars, [1000, 500, 100, 50], [100, 80, 60, 40, 20]),
-        forks: repo.stars > 0 ? this.scoreByRatio(repo.forks / repo.stars, 0.2, 0.1) : 20,
-        contributors: this.scoreByThresholds(repo.forks, [50, 20, 10], [70, 50, 30, 20])
+        stars: this.scoreByThresholds(
+          repo.stars,
+          [1000, 500, 100, 50],
+          [100, 80, 60, 40, 20],
+        ),
+        forks:
+          repo.stars > 0
+            ? this.scoreByRatio(repo.forks / repo.stars, 0.2, 0.1)
+            : 20,
+        contributors: this.scoreByThresholds(
+          repo.forks,
+          [50, 20, 10],
+          [70, 50, 30, 20],
+        ),
       },
       engagement: {
         forkRatio: this.scoreForkRatio(repo),
         issues: this.scoreIssueRatio(repo),
-        topics: Math.min(repo.topics.filter(t => 
-          ['ai', 'llm', 'ml', 'gpt'].some(keyword => t.toLowerCase().includes(keyword))
-        ).length * 20, 60)
+        topics: Math.min(
+          repo.topics.filter((t) =>
+            ["ai", "llm", "ml", "gpt"].some((keyword) =>
+              t.toLowerCase().includes(keyword),
+            ),
+          ).length * 20,
+          60,
+        ),
       },
       quality: {
         docs: this.scoreDocumentation(repo),
-        code: this.scoreByThresholds(repo.stars, [1000, 500, 100], [80, 60, 40, 20]),
-        activity: this.scoreByThresholds(daysSinceUpdate, [7, 30, 90], [100, 80, 50, 20], true)
-      }
+        code: this.scoreByThresholds(
+          repo.stars,
+          [1000, 500, 100],
+          [80, 60, 40, 20],
+        ),
+        activity: this.scoreByThresholds(
+          daysSinceUpdate,
+          [7, 30, 90],
+          [100, 80, 50, 20],
+          true,
+        ),
+      },
     };
   }
 
   /**
    * Calculate weighted sum
    */
-  private weightedSum(values: Record<string, number>, weights: Record<string, number>): number {
+  private weightedSum(
+    values: Record<string, number>,
+    weights: Record<string, number>,
+  ): number {
     return Object.entries(weights).reduce(
       (sum, [key, weight]) => sum + (values[key] || 0) * weight,
-      0
+      0,
     );
   }
 
@@ -77,10 +120,10 @@ export class RepoAnalyzer extends BaseService {
    * Score by thresholds
    */
   private scoreByThresholds(
-    value: number, 
-    thresholds: number[], 
+    value: number,
+    thresholds: number[],
     scores: number[],
-    inverse: boolean = false
+    inverse: boolean = false,
   ): number {
     for (let i = 0; i < thresholds.length; i++) {
       if (inverse ? value <= thresholds[i] : value >= thresholds[i]) {
@@ -93,7 +136,11 @@ export class RepoAnalyzer extends BaseService {
   /**
    * Score by ratio
    */
-  private scoreByRatio(ratio: number, optimal: number, acceptable: number): number {
+  private scoreByRatio(
+    ratio: number,
+    optimal: number,
+    acceptable: number,
+  ): number {
     if (ratio >= acceptable && ratio <= optimal) return 80;
     if (ratio > optimal && ratio <= optimal * 1.5) return 60;
     if (ratio >= acceptable * 0.5) return 40;
@@ -131,7 +178,12 @@ export class RepoAnalyzer extends BaseService {
     if (repo.topics.length > 3) score += 20;
     else if (repo.topics.length > 0) score += 10;
     if (!repo.is_archived && !repo.is_fork) score += 20;
-    if (['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust'].includes(repo.language || '')) score += 10;
+    if (
+      ["Python", "TypeScript", "JavaScript", "Go", "Rust"].includes(
+        repo.language || "",
+      )
+    )
+      score += 10;
     return Math.min(score, 100);
   }
 
@@ -139,16 +191,20 @@ export class RepoAnalyzer extends BaseService {
    * Calculate days since date
    */
   private getDaysSince(dateString: string): number {
-    return Math.ceil((Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));
+    return Math.ceil(
+      (Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24),
+    );
   }
 
   /**
    * Determine if repository is high-potential
    */
   isHighPotential(score: Score): boolean {
-    return score.total >= ScoringConfig.thresholds.highPotential || 
-           score.growth >= 80 ||
-           (score.growth >= 60 && score.quality >= 70);
+    return (
+      score.total >= ScoringConfig.thresholds.highPotential ||
+      score.growth >= 80 ||
+      (score.growth >= 60 && score.quality >= 70)
+    );
   }
 
   /**
@@ -159,19 +215,22 @@ export class RepoAnalyzer extends BaseService {
     if (CONFIG.claude.useClaude4) {
       // Aggressive Opus-4 usage for high-potential repos
       if (score.total >= CONFIG.claude.thresholds.high || score.growth >= 80) {
-        return CONFIG.claude.models.high; // claude-opus-4
+        return CONFIG.claude.models.high; // claude-opus-4-6
       } else if (score.total >= CONFIG.claude.thresholds.medium) {
-        return CONFIG.claude.models.medium; // claude-sonnet-4
+        return CONFIG.claude.models.medium; // claude-sonnet-4-6
       }
-      return CONFIG.claude.models.low; // claude-3-haiku-20240307
+      return CONFIG.claude.models.low; // claude-haiku-4-5-20251001
     }
-    
-    // Fallback to Claude-3 models
-    if (score.total >= ScoringConfig.thresholds.veryHigh || score.growth >= 90) {
-      return 'claude-3-opus-20240229';
+
+    // Fallback (same models, useClaude4 flag is legacy)
+    if (
+      score.total >= ScoringConfig.thresholds.veryHigh ||
+      score.growth >= 90
+    ) {
+      return "claude-opus-4-6";
     } else if (score.total >= ScoringConfig.thresholds.highPotential) {
-      return 'claude-3-sonnet-20240229';
+      return "claude-sonnet-4-6";
     }
-    return 'claude-3-haiku-20240307';
+    return "claude-haiku-4-5-20251001";
   }
 }

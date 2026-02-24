@@ -5,11 +5,11 @@ export interface Env {
   DB: D1Database;
   STORAGE: R2Bucket;
   GITHUB_AGENT: DurableObjectNamespace;
-  
+
   // Secrets
   GITHUB_TOKEN: string;
   ANTHROPIC_API_KEY: string;
-  
+
   // Environment variables
   ENVIRONMENT?: string;
 }
@@ -135,17 +135,12 @@ export interface Contributor {
 }
 
 // Simplified Analysis types
-export type ClaudeModel = 
-  | 'claude-opus-4-20250514'        // Claude 4 Opus (latest, most capable)
-  | 'claude-sonnet-4-20250514'      // Claude 4 Sonnet (latest, balanced)
-  | 'claude-3-5-sonnet-20241022'    // Claude 3.5 Sonnet (fallback)
-  | 'claude-3-5-sonnet-20240620'    // Claude 3.5 Sonnet (previous)
-  | 'claude-3-opus-20240229'        // Claude 3 Opus
-  | 'claude-3-sonnet-20240229'      // Claude 3 Sonnet
-  | 'claude-3-haiku-20240307'       // Claude 3 Haiku
-  | 'claude-3-5-haiku-20241022';    // Claude 3.5 Haiku (fast)
+export type ClaudeModel =
+  | "claude-opus-4-6" // Claude 4.6 Opus (latest, most capable)
+  | "claude-sonnet-4-6" // Claude 4.6 Sonnet (latest, balanced)
+  | "claude-haiku-4-5-20251001"; // Claude 4.5 Haiku (fast)
 
-export type Recommendation = 'strong-buy' | 'buy' | 'watch' | 'pass';
+export type Recommendation = "strong-buy" | "buy" | "watch" | "pass";
 
 export interface Analysis {
   repo_id: string;
@@ -182,8 +177,8 @@ export interface Analysis {
 export interface Alert {
   id?: number;
   repo_id: string;
-  type: 'high_growth' | 'investment_opportunity' | 'trend';
-  level: 'urgent' | 'high' | 'medium';
+  type: "high_growth" | "investment_opportunity" | "trend";
+  level: "urgent" | "high" | "medium";
   message: string;
   metadata?: Record<string, any>;
   sent_at?: string;
@@ -192,7 +187,7 @@ export interface Alert {
 // Trend types
 export interface Trend {
   id?: number;
-  type: 'technology' | 'topic' | 'pattern';
+  type: "technology" | "topic" | "pattern";
   name: string;
   description: string;
   growth_rate: number;
@@ -214,7 +209,7 @@ export interface Score {
 // Configuration
 export const CONFIG = {
   github: {
-    topics: ['ai', 'llm', 'agents', 'machine-learning', 'gpt', 'langchain'],
+    topics: ["ai", "llm", "agents", "machine-learning", "gpt", "langchain"],
     minStars: 100,
     scanInterval: 1, // hours
     // Comprehensive scanning configuration
@@ -222,47 +217,47 @@ export const CONFIG = {
       hot: {
         maxRepos: 200,
         minStars: 100,
-        scanDepth: 'deep', // All metrics
+        scanDepth: "deep", // All metrics
         scanFrequency: 1, // hours
       },
       rising: {
         maxRepos: 1000,
         minStars: 50,
-        scanDepth: 'basic', // Core metrics only
+        scanDepth: "basic", // Core metrics only
         scanFrequency: 24, // hours
       },
       longtail: {
         maxRepos: 3000,
         minStars: 10,
-        scanDepth: 'minimal', // Just stars/forks
+        scanDepth: "minimal", // Just stars/forks
         scanFrequency: 168, // weekly
       },
     },
     // Multi-dimensional search strategies
     searchStrategies: [
-      { type: 'topic', query: 'topic:ai stars:>10' },
-      { type: 'topic', query: 'topic:llm stars:>10' },
-      { type: 'topic', query: 'topic:machine-learning stars:>10' },
-      { type: 'language', query: 'language:python topic:ai stars:>50' },
-      { type: 'language', query: 'language:typescript topic:ai stars:>50' },
-      { type: 'recent', query: 'created:>2024-01-01 topic:ai stars:>20' },
-      { type: 'trending', query: 'pushed:>2024-12-01 topic:llm stars:>50' },
+      { type: "topic", query: "topic:ai stars:>10" },
+      { type: "topic", query: "topic:llm stars:>10" },
+      { type: "topic", query: "topic:machine-learning stars:>10" },
+      { type: "language", query: "language:python topic:ai stars:>50" },
+      { type: "language", query: "language:typescript topic:ai stars:>50" },
+      { type: "recent", query: "created:>2024-01-01 topic:ai stars:>20" },
+      { type: "trending", query: "pushed:>2024-12-01 topic:llm stars:>50" },
     ],
   },
   claude: {
     models: {
-      high: 'claude-opus-4-20250514' as ClaudeModel,              // Claude 4 Opus - most capable model
-      medium: 'claude-sonnet-4-20250514' as ClaudeModel,          // Claude 4 Sonnet - balanced performance
-      low: 'claude-3-5-haiku-20241022' as ClaudeModel,            // Claude 3.5 Haiku for efficiency
+      high: "claude-opus-4-6" as ClaudeModel, // Claude 4.6 Opus - most capable model
+      medium: "claude-sonnet-4-6" as ClaudeModel, // Claude 4.6 Sonnet - balanced performance
+      low: "claude-haiku-4-5-20251001" as ClaudeModel, // Claude 4.5 Haiku for efficiency
     },
-    thresholds: { 
-      high: 70,    // Use latest Claude 3.5 Sonnet for high-value repos
-      medium: 50   // Use previous Claude 3.5 Sonnet for medium repos
+    thresholds: {
+      high: 70, // Use latest Claude 3.5 Sonnet for high-value repos
+      medium: 50, // Use previous Claude 3.5 Sonnet for medium repos
     },
-    maxTokens: { 
-      opus: 4096,     // Claude Opus max limit
-      sonnet: 8192,   // Claude 3.5 Sonnet supports 8192
-      haiku: 4096     // Claude Haiku supports 4096
+    maxTokens: {
+      opus: 8192, // Claude 4.6 Opus
+      sonnet: 8192, // Claude 4.6 Sonnet
+      haiku: 8192, // Claude 4.5 Haiku
     },
     // Feature flags for migration
     useClaude4: true,

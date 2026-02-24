@@ -1,7 +1,15 @@
-import type { Env, Repository, RepoMetrics, Analysis, Alert, Contributor, Trend } from '../types';
-import { BaseService } from './base';
-import { BatchProcessor } from '../utils/batchProcessor';
-import { PerformanceMonitor } from '../utils/performanceMonitor';
+import type {
+  Env,
+  Repository,
+  RepoMetrics,
+  Analysis,
+  Alert,
+  Contributor,
+  Trend,
+} from "../types";
+import { BaseService } from "./base";
+import { BatchProcessor } from "../utils/batchProcessor";
+import { PerformanceMonitor } from "../utils/performanceMonitor";
 
 export class StorageService extends BaseService {
   private batchProcessor: BatchProcessor;
@@ -15,18 +23,32 @@ export class StorageService extends BaseService {
 
   // Repository operations
   async saveRepository(repo: Repository): Promise<void> {
-    return this.performanceMonitor.monitor('saveRepository', async () => {
-      await this.dbRun(`
+    return this.performanceMonitor.monitor("saveRepository", async () => {
+      await this.dbRun(
+        `
         INSERT OR REPLACE INTO repositories (
           id, name, owner, full_name, description, stars, forks, 
           open_issues, language, topics, created_at, updated_at, 
           pushed_at, is_archived, is_fork, html_url, clone_url, default_branch
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        repo.id, repo.name, repo.owner, repo.full_name, repo.description,
-        repo.stars, repo.forks, repo.open_issues, repo.language,
-        JSON.stringify(repo.topics), repo.created_at, repo.updated_at,
-        repo.pushed_at, repo.is_archived ? 1 : 0, repo.is_fork ? 1 : 0,
-        repo.html_url, repo.clone_url, repo.default_branch
+        repo.id,
+        repo.name,
+        repo.owner,
+        repo.full_name,
+        repo.description,
+        repo.stars,
+        repo.forks,
+        repo.open_issues,
+        repo.language,
+        JSON.stringify(repo.topics),
+        repo.created_at,
+        repo.updated_at,
+        repo.pushed_at,
+        repo.is_archived ? 1 : 0,
+        repo.is_fork ? 1 : 0,
+        repo.html_url,
+        repo.clone_url,
+        repo.default_branch,
       );
     });
   }
@@ -35,52 +57,78 @@ export class StorageService extends BaseService {
    * Save multiple repositories in batch
    */
   async saveRepositoriesBatch(repos: Repository[]): Promise<void> {
-    return this.performanceMonitor.monitor('saveRepositoriesBatch', async () => {
-      const queries = repos.map(repo => ({
-        sql: `
+    return this.performanceMonitor.monitor(
+      "saveRepositoriesBatch",
+      async () => {
+        const queries = repos.map((repo) => ({
+          sql: `
           INSERT OR REPLACE INTO repositories (
             id, name, owner, full_name, description, stars, forks, 
             open_issues, language, topics, created_at, updated_at, 
             pushed_at, is_archived, is_fork, html_url, clone_url, default_branch
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        params: [
-          repo.id, repo.name, repo.owner, repo.full_name, repo.description,
-          repo.stars, repo.forks, repo.open_issues, repo.language,
-          JSON.stringify(repo.topics), repo.created_at, repo.updated_at,
-          repo.pushed_at, repo.is_archived ? 1 : 0, repo.is_fork ? 1 : 0,
-          repo.html_url, repo.clone_url, repo.default_branch
-        ]
-      }));
+          params: [
+            repo.id,
+            repo.name,
+            repo.owner,
+            repo.full_name,
+            repo.description,
+            repo.stars,
+            repo.forks,
+            repo.open_issues,
+            repo.language,
+            JSON.stringify(repo.topics),
+            repo.created_at,
+            repo.updated_at,
+            repo.pushed_at,
+            repo.is_archived ? 1 : 0,
+            repo.is_fork ? 1 : 0,
+            repo.html_url,
+            repo.clone_url,
+            repo.default_branch,
+          ],
+        }));
 
-      const statements = this.prepareBatchStatements(queries);
-      await this.dbBatch(statements);
-    });
+        const statements = this.prepareBatchStatements(queries);
+        await this.dbBatch(statements);
+      },
+    );
   }
 
   async getRepository(repoId: string): Promise<Repository | null> {
     const result = await this.dbFirst<any>(
-      'SELECT * FROM repositories WHERE id = ?',
-      repoId
+      "SELECT * FROM repositories WHERE id = ?",
+      repoId,
     );
     return result ? this.parseRepository(result) : null;
   }
 
-  async getRepositoryByName(owner: string, name: string): Promise<Repository | null> {
+  async getRepositoryByName(
+    owner: string,
+    name: string,
+  ): Promise<Repository | null> {
     const result = await this.dbFirst<any>(
-      'SELECT * FROM repositories WHERE owner = ? AND name = ?',
-      owner, name
+      "SELECT * FROM repositories WHERE owner = ? AND name = ?",
+      owner,
+      name,
     );
     return result ? this.parseRepository(result) : null;
   }
 
   // Metrics operations
   async saveMetrics(metrics: RepoMetrics): Promise<void> {
-    await this.dbRun(`
+    await this.dbRun(
+      `
       INSERT INTO repo_metrics (
         repo_id, stars, forks, open_issues, watchers, contributors, commits_count
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      metrics.repo_id, metrics.stars, metrics.forks, metrics.open_issues,
-      metrics.watchers, metrics.contributors, metrics.commits_count
+      metrics.repo_id,
+      metrics.stars,
+      metrics.forks,
+      metrics.open_issues,
+      metrics.watchers,
+      metrics.contributors,
+      metrics.commits_count,
     );
   }
 
@@ -88,16 +136,21 @@ export class StorageService extends BaseService {
    * Save multiple metrics in batch
    */
   async saveMetricsBatch(metricsList: RepoMetrics[]): Promise<void> {
-    return this.performanceMonitor.monitor('saveMetricsBatch', async () => {
-      const queries = metricsList.map(metrics => ({
+    return this.performanceMonitor.monitor("saveMetricsBatch", async () => {
+      const queries = metricsList.map((metrics) => ({
         sql: `
           INSERT INTO repo_metrics (
             repo_id, stars, forks, open_issues, watchers, contributors, commits_count
           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         params: [
-          metrics.repo_id, metrics.stars, metrics.forks, metrics.open_issues,
-          metrics.watchers, metrics.contributors, metrics.commits_count
-        ]
+          metrics.repo_id,
+          metrics.stars,
+          metrics.forks,
+          metrics.open_issues,
+          metrics.watchers,
+          metrics.contributors,
+          metrics.commits_count,
+        ],
       }));
 
       const statements = this.prepareBatchStatements(queries);
@@ -107,47 +160,57 @@ export class StorageService extends BaseService {
 
   async getLatestMetrics(repoId: string): Promise<RepoMetrics | null> {
     return this.dbFirst<RepoMetrics>(
-      'SELECT * FROM repo_metrics WHERE repo_id = ? ORDER BY recorded_at DESC LIMIT 1',
-      repoId
+      "SELECT * FROM repo_metrics WHERE repo_id = ? ORDER BY recorded_at DESC LIMIT 1",
+      repoId,
     );
   }
 
   // Analysis operations
   async saveAnalysis(analysis: Analysis): Promise<void> {
-    await this.dbRun(`
+    await this.dbRun(
+      `
       INSERT INTO analyses (
         repo_id, investment_score, innovation_score, team_score, market_score,
         recommendation, summary, strengths, risks, questions, model, cost
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      analysis.repo_id, analysis.scores.investment, analysis.scores.innovation,
-      analysis.scores.team, analysis.scores.market, analysis.recommendation,
-      analysis.summary, JSON.stringify(analysis.strengths),
-      JSON.stringify(analysis.risks), JSON.stringify(analysis.questions),
-      analysis.metadata.model, analysis.metadata.cost
+      analysis.repo_id,
+      analysis.scores.investment,
+      analysis.scores.innovation,
+      analysis.scores.team,
+      analysis.scores.market,
+      analysis.recommendation,
+      analysis.summary,
+      JSON.stringify(analysis.strengths),
+      JSON.stringify(analysis.risks),
+      JSON.stringify(analysis.questions),
+      analysis.metadata.model,
+      analysis.metadata.cost,
     );
 
     // Archive to R2
-    await this.saveToR2(`analyses/${analysis.repo_id}/${Date.now()}.json`, analysis);
+    await this.saveToR2(
+      `analyses/${analysis.repo_id}/${Date.now()}.json`,
+      analysis,
+    );
   }
 
   async getLatestAnalysis(repoId: string): Promise<Analysis | null> {
     const result = await this.dbFirst<any>(
-      'SELECT * FROM analyses WHERE repo_id = ? ORDER BY created_at DESC LIMIT 1',
-      repoId
+      "SELECT * FROM analyses WHERE repo_id = ? ORDER BY created_at DESC LIMIT 1",
+      repoId,
     );
     return result ? this.parseAnalysis(result) : null;
   }
 
-  async getLatestAnalysisWithRepo(repoId: string): Promise<{ analysis: Analysis; repository: Repository } | null> {
+  async getLatestAnalysisWithRepo(
+    repoId: string,
+  ): Promise<{ analysis: Analysis; repository: Repository } | null> {
     const [analysisResult, repoResult] = await Promise.all([
       this.dbFirst<any>(
-        'SELECT * FROM analyses WHERE repo_id = ? ORDER BY created_at DESC LIMIT 1',
-        repoId
+        "SELECT * FROM analyses WHERE repo_id = ? ORDER BY created_at DESC LIMIT 1",
+        repoId,
       ),
-      this.dbFirst<any>(
-        'SELECT * FROM repositories WHERE id = ?',
-        repoId
-      )
+      this.dbFirst<any>("SELECT * FROM repositories WHERE id = ?", repoId),
     ]);
 
     if (!analysisResult || !repoResult) {
@@ -156,40 +219,51 @@ export class StorageService extends BaseService {
 
     return {
       analysis: this.parseAnalysis(analysisResult),
-      repository: this.parseRepository(repoResult)
+      repository: this.parseRepository(repoResult),
     };
   }
 
-  async hasRecentAnalysis(repoId: string, hoursThreshold: number = 168): Promise<boolean> {
+  async hasRecentAnalysis(
+    repoId: string,
+    hoursThreshold: number = 168,
+  ): Promise<boolean> {
     const result = await this.dbFirst<{ count: number }>(
       `SELECT COUNT(*) as count FROM analyses 
        WHERE repo_id = ? AND created_at > datetime('now', '-' || ? || ' hours')`,
-      repoId, hoursThreshold
+      repoId,
+      hoursThreshold,
     );
     return (result?.count || 0) > 0;
   }
 
   // Alert operations
   async saveAlert(alert: Alert): Promise<void> {
-    await this.dbRun(`
+    await this.dbRun(
+      `
       INSERT INTO alerts (repo_id, type, level, message, metadata)
       VALUES (?, ?, ?, ?, ?)`,
-      alert.repo_id, alert.type, alert.level, alert.message,
-      JSON.stringify(alert.metadata || {})
+      alert.repo_id,
+      alert.type,
+      alert.level,
+      alert.message,
+      JSON.stringify(alert.metadata || {}),
     );
   }
 
   async getRecentAlerts(limit: number = 10): Promise<Alert[]> {
     const results = await this.dbAll<any>(
-      'SELECT * FROM alerts ORDER BY sent_at DESC LIMIT ?',
-      limit
+      "SELECT * FROM alerts ORDER BY sent_at DESC LIMIT ?",
+      limit,
     );
     return results.map(this.parseAlert);
   }
 
   // Contributor operations
-  async saveContributors(repoId: string, contributors: Contributor[]): Promise<void> {
-    return this.performanceMonitor.monitor('saveContributors', async () => {
+  async saveContributors(
+    repoId: string,
+    contributors: Contributor[],
+  ): Promise<void> {
+    return this.performanceMonitor.monitor("saveContributors", async () => {
       const stmt = this.env.DB.prepare(`
         INSERT OR REPLACE INTO contributors (
           repo_id, username, contributions, profile_url, company,
@@ -198,41 +272,61 @@ export class StorageService extends BaseService {
       `);
 
       await this.env.DB.batch(
-        contributors.map(c => stmt.bind(
-          repoId, c.username, c.contributions, c.profile_url, c.company,
-          c.location, c.bio, c.followers, c.following, c.public_repos
-        ))
+        contributors.map((c) =>
+          stmt.bind(
+            repoId,
+            c.username,
+            c.contributions,
+            c.profile_url,
+            c.company,
+            c.location,
+            c.bio,
+            c.followers,
+            c.following,
+            c.public_repos,
+          ),
+        ),
       );
     });
   }
 
   // Trend operations
   async saveTrend(trend: Trend): Promise<void> {
-    await this.dbRun(`
+    await this.dbRun(
+      `
       INSERT OR REPLACE INTO trends (
         type, name, description, growth_rate, repo_count,
         total_stars, examples, last_updated
       ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      trend.type, trend.name, trend.description, trend.growth_rate,
-      trend.repo_count, trend.total_stars, JSON.stringify(trend.examples)
+      trend.type,
+      trend.name,
+      trend.description,
+      trend.growth_rate,
+      trend.repo_count,
+      trend.total_stars,
+      JSON.stringify(trend.examples),
     );
   }
 
   async getRecentTrends(type?: string, limit: number = 10): Promise<Trend[]> {
     const query = type
-      ? 'SELECT * FROM trends WHERE type = ? ORDER BY growth_rate DESC LIMIT ?'
-      : 'SELECT * FROM trends ORDER BY growth_rate DESC LIMIT ?';
+      ? "SELECT * FROM trends WHERE type = ? ORDER BY growth_rate DESC LIMIT ?"
+      : "SELECT * FROM trends ORDER BY growth_rate DESC LIMIT ?";
     const params = type ? [type, limit] : [limit];
-    
+
     const results = await this.dbAll<any>(query, ...params);
     return results.map(this.parseTrend);
   }
 
   // High growth repos with fallback logic
-  async getHighGrowthRepos(days: number = 30, minGrowthPercent: number = 200): Promise<Repository[]> {
-    return this.performanceMonitor.monitor('getHighGrowthRepos', async () => {
+  async getHighGrowthRepos(
+    days: number = 30,
+    minGrowthPercent: number = 200,
+  ): Promise<Repository[]> {
+    return this.performanceMonitor.monitor("getHighGrowthRepos", async () => {
       // First, try to get repos with actual historical growth data
-      const growthResults = await this.dbAll<any>(`
+      const growthResults = await this.dbAll<any>(
+        `
         WITH growth_calc AS (
           SELECT r.*, 
             CAST((m1.stars - m2.stars) AS REAL) / NULLIF(m2.stars, 0) * 100 as growth_percent
@@ -247,18 +341,23 @@ export class StorageService extends BaseService {
         )
         SELECT * FROM growth_calc WHERE growth_percent >= ? 
         ORDER BY growth_percent DESC LIMIT 50`,
-        days, minGrowthPercent
+        days,
+        minGrowthPercent,
       );
 
       // If we have historical growth data, return it
       if (growthResults.length > 0) {
-        console.log(`Found ${growthResults.length} repositories with historical growth data`);
+        console.log(
+          `Found ${growthResults.length} repositories with historical growth data`,
+        );
         return growthResults.map(this.parseRepository);
       }
 
       // Fallback: Get high-potential repositories using alternative criteria
-      console.log('No historical growth data found, using fallback criteria for high-growth repos');
-      
+      console.log(
+        "No historical growth data found, using fallback criteria for high-growth repos",
+      );
+
       // Try to get repositories from repo_tiers table (Tier 1 = highest potential)
       const tierResults = await this.dbAll<any>(`
         SELECT r.*, 1 as tier_priority
@@ -273,8 +372,10 @@ export class StorageService extends BaseService {
       `);
 
       if (tierResults.length > 0) {
-        console.log(`Found ${tierResults.length} Tier 1 repositories as high-growth candidates`);
-        
+        console.log(
+          `Found ${tierResults.length} Tier 1 repositories as high-growth candidates`,
+        );
+
         // Add some Tier 2 repositories to fill out the list
         const tier2Results = await this.dbAll<any>(`
           SELECT r.*, 2 as tier_priority
@@ -293,7 +394,9 @@ export class StorageService extends BaseService {
       }
 
       // Final fallback: Get recently active repositories with high stars
-      console.log('No tier data found, using star-based fallback for high-growth repos');
+      console.log(
+        "No tier data found, using star-based fallback for high-growth repos",
+      );
       const starResults = await this.dbAll<any>(`
         SELECT r.*
         FROM repositories r
@@ -305,7 +408,9 @@ export class StorageService extends BaseService {
         LIMIT 30
       `);
 
-      console.log(`Found ${starResults.length} high-star repositories as fallback`);
+      console.log(
+        `Found ${starResults.length} high-star repositories as fallback`,
+      );
       return starResults.map(this.parseRepository);
     });
   }
@@ -315,44 +420,130 @@ export class StorageService extends BaseService {
    */
   async getRepositoriesByIds(repoIds: string[]): Promise<Repository[]> {
     if (repoIds.length === 0) return [];
-    
-    return this.performanceMonitor.monitor('getRepositoriesByIds', async () => {
+
+    return this.performanceMonitor.monitor("getRepositoriesByIds", async () => {
       // Process in chunks to avoid query size limits
       const chunks = [];
       const chunkSize = 100;
-      
+
       for (let i = 0; i < repoIds.length; i += chunkSize) {
         chunks.push(repoIds.slice(i, i + chunkSize));
       }
-      
+
       const results: Repository[] = [];
-      
+
       for (const chunk of chunks) {
-        const placeholders = chunk.map(() => '?').join(',');
+        const placeholders = chunk.map(() => "?").join(",");
         const chunkResults = await this.dbAll<any>(
           `SELECT * FROM repositories WHERE id IN (${placeholders})`,
-          ...chunk
+          ...chunk,
         );
         results.push(...chunkResults.map(this.parseRepository));
       }
-      
+
       return results;
     });
   }
 
   /**
+   * Get repository count
+   */
+  async getRepositoryCount(): Promise<number> {
+    const result = await this.dbFirst<{ count: number }>(
+      `
+      SELECT COUNT(*) as count FROM repositories 
+      WHERE is_archived = 0 AND is_fork = 0
+    `,
+    );
+    return result?.count || 0;
+  }
+
+  /**
+   * Get repositories by tier
+   */
+  async getReposByTier(
+    tier: 1 | 2 | 3,
+    limit?: number,
+  ): Promise<Array<Repository & { tier: number | null }>> {
+    const query = limit
+      ? `SELECT r.*, rt.tier
+         FROM repositories r
+         INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+         WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+         ORDER BY r.stars DESC
+         LIMIT ?`
+      : `SELECT r.*, rt.tier
+         FROM repositories r
+         INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+         WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+         ORDER BY r.stars DESC`;
+
+    const params = limit ? [tier, limit] : [tier];
+    const results = await this.dbAll<any>(query, ...params);
+
+    return results.map((row) => this.parseRepositoryWithTier(row));
+  }
+
+  /**
+   * Get repository count by tier
+   */
+  async getRepoCountByTier(tier: 1 | 2 | 3): Promise<number> {
+    const result = await this.dbFirst<{ count: number }>(
+      `
+      SELECT COUNT(*) as count 
+      FROM repositories r
+      INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+      WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+    `,
+      tier,
+    );
+
+    return result?.count || 0;
+  }
+
+  /**
+   * Get repositories by tier with pagination
+   */
+  async getReposByTierPaginated(
+    tier: 1 | 2 | 3,
+    limit: number,
+    offset: number,
+  ): Promise<Array<Repository & { tier: number | null }>> {
+    const results = await this.dbAll<any>(
+      `
+      SELECT r.*, rt.tier
+      FROM repositories r
+      INNER JOIN repo_tiers rt ON r.id = rt.repo_id
+      WHERE rt.tier = ? AND r.is_archived = 0 AND r.is_fork = 0
+      ORDER BY r.stars DESC
+      LIMIT ? OFFSET ?
+    `,
+      tier,
+      limit,
+      offset,
+    );
+
+    return results.map((row) => this.parseRepositoryWithTier(row));
+  }
+
+  /**
    * Bulk update repository metrics
    */
-  async updateRepositoryMetricsBatch(updates: Array<{ repoId: string; stars: number; forks: number }>) {
-    return this.performanceMonitor.monitor('updateRepositoryMetricsBatch', async () => {
-      const queries = updates.map(update => ({
-        sql: `UPDATE repositories SET stars = ?, forks = ? WHERE id = ?`,
-        params: [update.stars, update.forks, update.repoId]
-      }));
-      
-      const statements = this.prepareBatchStatements(queries);
-      await this.dbBatch(statements);
-    });
+  async updateRepositoryMetricsBatch(
+    updates: Array<{ repoId: string; stars: number; forks: number }>,
+  ) {
+    return this.performanceMonitor.monitor(
+      "updateRepositoryMetricsBatch",
+      async () => {
+        const queries = updates.map((update) => ({
+          sql: `UPDATE repositories SET stars = ?, forks = ? WHERE id = ?`,
+          params: [update.stars, update.forks, update.repoId],
+        }));
+
+        const statements = this.prepareBatchStatements(queries);
+        await this.dbBatch(statements);
+      },
+    );
   }
 
   // Analytics
@@ -362,17 +553,20 @@ export class StorageService extends BaseService {
     alerts_sent: number;
     total_cost: number;
   }> {
-    return this.performanceMonitor.monitor('getDailyStats', async () => {
-      const today = new Date().toISOString().split('T')[0];
+    return this.performanceMonitor.monitor("getDailyStats", async () => {
+      const today = new Date().toISOString().split("T")[0];
       const [repos, analyses, alerts] = await Promise.all([
         this.dbFirst<{ count: number }>(
-          "SELECT COUNT(*) as count FROM repositories WHERE DATE(discovered_at) = ?", today
+          "SELECT COUNT(*) as count FROM repositories WHERE DATE(discovered_at) = ?",
+          today,
         ),
         this.dbFirst<{ count: number; total_cost: number }>(
-          "SELECT COUNT(*) as count, SUM(cost) as total_cost FROM analyses WHERE DATE(created_at) = ?", today
+          "SELECT COUNT(*) as count, SUM(cost) as total_cost FROM analyses WHERE DATE(created_at) = ?",
+          today,
         ),
         this.dbFirst<{ count: number }>(
-          "SELECT COUNT(*) as count FROM alerts WHERE DATE(sent_at) = ?", today
+          "SELECT COUNT(*) as count FROM alerts WHERE DATE(sent_at) = ?",
+          today,
         ),
       ]);
 
@@ -389,23 +583,20 @@ export class StorageService extends BaseService {
    * Clean up old data
    */
   async cleanupOldData(daysToKeep: number = 90): Promise<void> {
-    return this.performanceMonitor.monitor('cleanupOldData', async () => {
+    return this.performanceMonitor.monitor("cleanupOldData", async () => {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
       const cutoffDateStr = cutoffDate.toISOString();
-      
+
       // Clean up old metrics
       await this.dbRun(
         `DELETE FROM repo_metrics WHERE recorded_at < ?`,
-        cutoffDateStr
+        cutoffDateStr,
       );
-      
+
       // Clean up old alerts
-      await this.dbRun(
-        `DELETE FROM alerts WHERE sent_at < ?`,
-        cutoffDateStr
-      );
-      
+      await this.dbRun(`DELETE FROM alerts WHERE sent_at < ?`, cutoffDateStr);
+
       // Clean up orphaned contributors
       await this.dbRun(`
         DELETE FROM contributors 
@@ -419,7 +610,7 @@ export class StorageService extends BaseService {
     try {
       await this.env.STORAGE.put(key, JSON.stringify(data));
     } catch (error) {
-      console.error('R2 save error:', error);
+      console.error("R2 save error:", error);
     }
   }
 
@@ -427,7 +618,7 @@ export class StorageService extends BaseService {
   private parseRepository(row: any): Repository {
     return {
       ...row,
-      topics: JSON.parse(row.topics || '[]'),
+      topics: JSON.parse(row.topics || "[]"),
       is_archived: Boolean(row.is_archived),
       is_fork: Boolean(row.is_fork),
       // Ensure numeric fields have valid defaults
@@ -436,6 +627,16 @@ export class StorageService extends BaseService {
       open_issues: row.open_issues || 0,
       // Ensure growth_rate exists for high growth repos
       growth_rate: row.growth_rate || row.growth_percent || 0,
+    };
+  }
+
+  private parseRepositoryWithTier(
+    row: any,
+  ): Repository & { tier: number | null } {
+    const parsed = this.parseRepository(row);
+    return {
+      ...parsed,
+      tier: row.tier ?? null,
     };
   }
 
@@ -450,9 +651,9 @@ export class StorageService extends BaseService {
       },
       recommendation: row.recommendation,
       summary: row.summary,
-      strengths: JSON.parse(row.strengths || '[]'),
-      risks: JSON.parse(row.risks || '[]'),
-      questions: JSON.parse(row.questions || '[]'),
+      strengths: JSON.parse(row.strengths || "[]"),
+      risks: JSON.parse(row.risks || "[]"),
+      questions: JSON.parse(row.questions || "[]"),
       metadata: {
         model: row.model,
         cost: row.cost,
@@ -464,14 +665,14 @@ export class StorageService extends BaseService {
   private parseAlert(row: any): Alert {
     return {
       ...row,
-      metadata: JSON.parse(row.metadata || '{}'),
+      metadata: JSON.parse(row.metadata || "{}"),
     };
   }
 
   private parseTrend(row: any): Trend {
     return {
       ...row,
-      examples: JSON.parse(row.examples || '[]'),
+      examples: JSON.parse(row.examples || "[]"),
     };
   }
 }

@@ -1,10 +1,11 @@
-import { BaseService } from './base';
-import type { Env } from '../types';
+import { BaseService } from "./base";
+import { CONFIG } from "../types";
+import type { Env } from "../types";
 
 interface LogQuery {
   startTime?: string;
   endTime?: string;
-  level?: 'log' | 'error' | 'warn' | 'info' | 'debug';
+  level?: "log" | "error" | "warn" | "info" | "debug";
   outcome?: string;
   searchTerm?: string;
   limit?: number;
@@ -65,51 +66,53 @@ export class LogsService extends BaseService {
       const params: any[] = [];
 
       if (query.startTime) {
-        sql += ' AND timestamp >= ?';
+        sql += " AND timestamp >= ?";
         params.push(query.startTime);
       }
 
       if (query.endTime) {
-        sql += ' AND timestamp <= ?';
+        sql += " AND timestamp <= ?";
         params.push(query.endTime);
       }
 
       if (query.level) {
-        sql += ' AND log_level = ?';
+        sql += " AND log_level = ?";
         params.push(query.level);
       }
 
       if (query.outcome) {
-        sql += ' AND outcome = ?';
+        sql += " AND outcome = ?";
         params.push(query.outcome);
       }
 
       if (query.searchTerm) {
-        sql += ' AND (log_message LIKE ? OR error_message LIKE ?)';
+        sql += " AND (log_message LIKE ? OR error_message LIKE ?)";
         params.push(`%${query.searchTerm}%`, `%${query.searchTerm}%`);
       }
 
-      sql += ' ORDER BY timestamp DESC';
-      
+      sql += " ORDER BY timestamp DESC";
+
       if (query.limit) {
-        sql += ' LIMIT ?';
+        sql += " LIMIT ?";
         params.push(query.limit);
       }
 
       if (query.offset) {
-        sql += ' OFFSET ?';
+        sql += " OFFSET ?";
         params.push(query.offset);
       }
 
-      const result = await this.env.DB.prepare(sql).bind(...params).all();
-      
+      const result = await this.env.DB.prepare(sql)
+        .bind(...params)
+        .all();
+
       // Parse JSON fields
-      return result.results.map(row => ({
+      return result.results.map((row) => ({
         ...row,
         api_calls: row.api_calls ? JSON.parse(row.api_calls as string) : null,
         metrics: row.metrics ? JSON.parse(row.metrics as string) : null,
       }));
-    }, 'query logs');
+    }, "query logs");
   }
 
   /**
@@ -118,8 +121,9 @@ export class LogsService extends BaseService {
   async getErrorSummary(hours: number = 24): Promise<ErrorSummary[]> {
     return this.handleError(async () => {
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-      
-      const result = await this.env.DB.prepare(`
+
+      const result = await this.env.DB.prepare(
+        `
         SELECT 
           error_name,
           error_message,
@@ -132,9 +136,12 @@ export class LogsService extends BaseService {
         GROUP BY error_name, error_message
         ORDER BY count DESC
         LIMIT 50
-      `).bind(since).all();
+      `,
+      )
+        .bind(since)
+        .all();
 
-      return result.results.map(row => ({
+      return result.results.map((row) => ({
         name: row.error_name as string,
         message: row.error_message as string,
         count: row.count as number,
@@ -142,7 +149,7 @@ export class LogsService extends BaseService {
         lastSeen: row.last_seen as string,
         resolved: false,
       }));
-    }, 'get error summary');
+    }, "get error summary");
   }
 
   /**
@@ -151,8 +158,9 @@ export class LogsService extends BaseService {
   async getPerformanceMetrics(hours: number = 24): Promise<LogMetrics> {
     return this.handleError(async () => {
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-      
-      const result = await this.env.DB.prepare(`
+
+      const result = await this.env.DB.prepare(
+        `
         SELECT 
           COUNT(*) as total_requests,
           COUNT(CASE WHEN outcome = 'ok' THEN 1 END) as successful_requests,
@@ -162,34 +170,41 @@ export class LogsService extends BaseService {
           MAX(duration_ms) as max_duration
         FROM tail_logs
         WHERE timestamp >= ?
-      `).bind(since).first();
+      `,
+      )
+        .bind(since)
+        .first();
 
       // Calculate percentiles (simplified - in production, use proper percentile calculation)
-      const durations = await this.env.DB.prepare(`
+      const durations = await this.env.DB.prepare(
+        `
         SELECT duration_ms
         FROM tail_logs
         WHERE timestamp >= ? AND duration_ms IS NOT NULL
         ORDER BY duration_ms
-      `).bind(since).all();
+      `,
+      )
+        .bind(since)
+        .all();
 
       const sortedDurations = durations.results
-        .map(r => r.duration_ms as number)
-        .filter(d => d > 0)
+        .map((r) => r.duration_ms as number)
+        .filter((d) => d > 0)
         .sort((a, b) => a - b);
 
       const p95Index = Math.floor(sortedDurations.length * 0.95);
       const p99Index = Math.floor(sortedDurations.length * 0.99);
 
       return {
-        totalRequests: result?.total_requests as number || 0,
-        successfulRequests: result?.successful_requests as number || 0,
-        failedRequests: result?.failed_requests as number || 0,
-        errorCount: result?.error_count as number || 0,
-        avgDuration: result?.avg_duration as number || 0,
+        totalRequests: (result?.total_requests as number) || 0,
+        successfulRequests: (result?.successful_requests as number) || 0,
+        failedRequests: (result?.failed_requests as number) || 0,
+        errorCount: (result?.error_count as number) || 0,
+        avgDuration: (result?.avg_duration as number) || 0,
         p95Duration: sortedDurations[p95Index] || 0,
         p99Duration: sortedDurations[p99Index] || 0,
       };
-    }, 'get performance metrics');
+    }, "get performance metrics");
   }
 
   /**
@@ -198,19 +213,25 @@ export class LogsService extends BaseService {
   async getAPIUsage(hours: number = 24): Promise<APIUsage> {
     return this.handleError(async () => {
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-      
-      const logs = await this.env.DB.prepare(`
+
+      const logs = await this.env.DB.prepare(
+        `
         SELECT api_calls, log_message
         FROM tail_logs
         WHERE timestamp >= ?
           AND (api_calls IS NOT NULL OR log_message LIKE '%API%')
-      `).bind(since).all();
+      `,
+      )
+        .bind(since)
+        .all();
 
       let githubTotal = 0;
       let githubSearch = 0;
       let claudeOpus = 0;
       let claudeSonnet = 0;
       let claudeHaiku = 0;
+
+      const { high, medium, low } = CONFIG.claude.models;
 
       for (const log of logs.results) {
         if (log.api_calls) {
@@ -219,26 +240,26 @@ export class LogsService extends BaseService {
           claudeOpus += calls.claude || 0;
         }
 
-        const message = log.log_message as string || '';
-        if (message.includes('GitHub Search API')) {
+        const message = (log.log_message as string) || "";
+        if (message.includes("GitHub Search API")) {
           githubSearch++;
         }
-        if (message.includes('claude-opus-4')) {
+        if (message.includes(high)) {
           claudeOpus++;
         }
-        if (message.includes('claude-sonnet-4')) {
+        if (message.includes(medium)) {
           claudeSonnet++;
         }
-        if (message.includes('claude-3-5-haiku')) {
+        if (message.includes(low)) {
           claudeHaiku++;
         }
       }
 
       // Estimate costs (example rates)
-      const estimatedCost = 
-        (claudeOpus * 0.015) +    // $15 per 1M tokens (estimate)
-        (claudeSonnet * 0.003) +  // $3 per 1M tokens (estimate)
-        (claudeHaiku * 0.00025);  // $0.25 per 1M tokens (estimate)
+      const estimatedCost =
+        claudeOpus * 0.015 + // $15 per 1M tokens (estimate)
+        claudeSonnet * 0.003 + // $3 per 1M tokens (estimate)
+        claudeHaiku * 0.00025; // $0.25 per 1M tokens (estimate)
 
       return {
         github: {
@@ -253,7 +274,7 @@ export class LogsService extends BaseService {
           estimatedCost: Math.round(estimatedCost * 100) / 100,
         },
       };
-    }, 'get API usage');
+    }, "get API usage");
   }
 
   /**
@@ -262,14 +283,18 @@ export class LogsService extends BaseService {
   async getScanActivity(hours: number = 24): Promise<any> {
     return this.handleError(async () => {
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-      
-      const logs = await this.env.DB.prepare(`
+
+      const logs = await this.env.DB.prepare(
+        `
         SELECT timestamp, metrics
         FROM tail_logs
         WHERE timestamp >= ?
           AND metrics IS NOT NULL
         ORDER BY timestamp DESC
-      `).bind(since).all();
+      `,
+      )
+        .bind(since)
+        .all();
 
       let totalScanned = 0;
       let totalAnalyzed = 0;
@@ -293,11 +318,12 @@ export class LogsService extends BaseService {
           totalScanned,
           totalAnalyzed,
           totalAlerts,
-          analysisRate: totalScanned > 0 ? (totalAnalyzed / totalScanned) * 100 : 0,
+          analysisRate:
+            totalScanned > 0 ? (totalAnalyzed / totalScanned) * 100 : 0,
         },
         timeline: timeline.slice(0, 100), // Last 100 events
       };
-    }, 'get scan activity');
+    }, "get scan activity");
   }
 
   /**
@@ -306,8 +332,9 @@ export class LogsService extends BaseService {
   async getCriticalAlerts(hours: number = 24): Promise<any[]> {
     return this.handleError(async () => {
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-      
-      const result = await this.env.DB.prepare(`
+
+      const result = await this.env.DB.prepare(
+        `
         SELECT *
         FROM tail_logs
         WHERE timestamp >= ?
@@ -320,17 +347,20 @@ export class LogsService extends BaseService {
           )
         ORDER BY timestamp DESC
         LIMIT 50
-      `).bind(since).all();
+      `,
+      )
+        .bind(since)
+        .all();
 
-      return result.results.map(row => ({
+      return result.results.map((row) => ({
         id: row.id,
         timestamp: row.timestamp,
-        type: row.error_name || 'alert',
+        type: row.error_name || "alert",
         message: row.error_message || row.log_message,
         requestUrl: row.request_url,
         outcome: row.outcome,
       }));
-    }, 'get critical alerts');
+    }, "get critical alerts");
   }
 
   /**
@@ -339,10 +369,16 @@ export class LogsService extends BaseService {
   async aggregateHourlyMetrics(): Promise<void> {
     return this.handleError(async () => {
       const now = new Date();
-      const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
+      const currentHour = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        now.getHours(),
+      );
       const previousHour = new Date(currentHour.getTime() - 60 * 60 * 1000);
 
-      const metrics = await this.env.DB.prepare(`
+      const metrics = await this.env.DB.prepare(
+        `
         SELECT 
           COUNT(*) as total_requests,
           COUNT(CASE WHEN outcome = 'ok' THEN 1 END) as successful_requests,
@@ -351,15 +387,22 @@ export class LogsService extends BaseService {
           AVG(duration_ms) as avg_duration_ms
         FROM tail_logs
         WHERE timestamp >= ? AND timestamp < ?
-      `).bind(previousHour.toISOString(), currentHour.toISOString()).first();
+      `,
+      )
+        .bind(previousHour.toISOString(), currentHour.toISOString())
+        .first();
 
       // Get API calls
-      const apiCalls = await this.env.DB.prepare(`
+      const apiCalls = await this.env.DB.prepare(
+        `
         SELECT api_calls
         FROM tail_logs
         WHERE timestamp >= ? AND timestamp < ?
           AND api_calls IS NOT NULL
-      `).bind(previousHour.toISOString(), currentHour.toISOString()).all();
+      `,
+      )
+        .bind(previousHour.toISOString(), currentHour.toISOString())
+        .all();
 
       let githubCalls = 0;
       let claudeCalls = 0;
@@ -371,21 +414,25 @@ export class LogsService extends BaseService {
       }
 
       // Insert aggregated metrics
-      await this.env.DB.prepare(`
+      await this.env.DB.prepare(
+        `
         INSERT OR REPLACE INTO tail_metrics_hourly (
           hour, total_requests, successful_requests, failed_requests,
           total_errors, github_api_calls, claude_api_calls, avg_duration_ms
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        previousHour.toISOString(),
-        metrics?.total_requests || 0,
-        metrics?.successful_requests || 0,
-        metrics?.failed_requests || 0,
-        metrics?.total_errors || 0,
-        githubCalls,
-        claudeCalls,
-        metrics?.avg_duration_ms || 0
-      ).run();
-    }, 'aggregate hourly metrics');
+      `,
+      )
+        .bind(
+          previousHour.toISOString(),
+          metrics?.total_requests || 0,
+          metrics?.successful_requests || 0,
+          metrics?.failed_requests || 0,
+          metrics?.total_errors || 0,
+          githubCalls,
+          claudeCalls,
+          metrics?.avg_duration_ms || 0,
+        )
+        .run();
+    }, "aggregate hourly metrics");
   }
 }

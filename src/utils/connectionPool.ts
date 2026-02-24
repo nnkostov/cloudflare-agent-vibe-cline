@@ -39,7 +39,7 @@ export class ConnectionPool {
    */
   release(): void {
     this.activeConnections--;
-    
+
     // Process next queued request
     const next = this.queue.shift();
     if (next) {
@@ -71,7 +71,7 @@ export class ConnectionPool {
     return {
       active: this.activeConnections,
       queued: this.queue.length,
-      available: this.maxConnections - this.activeConnections
+      available: this.maxConnections - this.activeConnections,
     };
   }
 
@@ -80,9 +80,9 @@ export class ConnectionPool {
    */
   private cleanupQueue(): void {
     const now = Date.now();
-    this.queue = this.queue.filter(item => {
+    this.queue = this.queue.filter((item) => {
       if (now - item.timestamp > this.timeout) {
-        item.reject(new Error('Connection request timed out'));
+        item.reject(new Error("Connection request timed out"));
         return false;
       }
       return true;

@@ -1,5 +1,5 @@
-import type { Env } from '../types';
-import { BaseService } from './base';
+import type { Env } from "../types";
+import { BaseService } from "./base";
 
 interface TableInfo {
   name: string;
@@ -25,9 +25,9 @@ interface ScanHistoryEntry {
 }
 
 interface SystemHealth {
-  databaseStatus: 'healthy' | 'degraded' | 'error';
-  dataFreshness: 'fresh' | 'stale' | 'critical';
-  lastScanStatus: 'success' | 'failed' | 'unknown';
+  databaseStatus: "healthy" | "degraded" | "error";
+  dataFreshness: "fresh" | "stale" | "critical";
+  lastScanStatus: "success" | "failed" | "unknown";
   missingTables: string[];
   recommendations: string[];
 }
@@ -42,14 +42,14 @@ export class DiagnosticsService extends BaseService {
    */
   async checkDataFreshness(): Promise<DataFreshnessInfo[]> {
     const tables = [
-      { name: 'repositories', column: 'discovered_at', staleHours: 24 },
-      { name: 'repo_metrics', column: 'recorded_at', staleHours: 6 },
-      { name: 'analyses', column: 'created_at', staleHours: 168 },
-      { name: 'alerts', column: 'sent_at', staleHours: 24 },
-      { name: 'commit_metrics', column: 'recorded_at', staleHours: 24 },
-      { name: 'release_history', column: 'recorded_at', staleHours: 48 },
-      { name: 'star_history', column: 'recorded_at', staleHours: 24 },
-      { name: 'repo_tiers', column: 'updated_at', staleHours: 12 },
+      { name: "repositories", column: "discovered_at", staleHours: 24 },
+      { name: "repo_metrics", column: "recorded_at", staleHours: 6 },
+      { name: "analyses", column: "created_at", staleHours: 168 },
+      { name: "alerts", column: "sent_at", staleHours: 24 },
+      { name: "commit_metrics", column: "recorded_at", staleHours: 24 },
+      { name: "release_history", column: "recorded_at", staleHours: 48 },
+      { name: "star_history", column: "recorded_at", staleHours: 24 },
+      { name: "repo_tiers", column: "updated_at", staleHours: 12 },
     ];
 
     const freshnessInfo: DataFreshnessInfo[] = [];
@@ -57,7 +57,7 @@ export class DiagnosticsService extends BaseService {
     for (const table of tables) {
       try {
         const result = await this.env.DB.prepare(
-          `SELECT MAX(${table.column}) as last_update FROM ${table.name}`
+          `SELECT MAX(${table.column}) as last_update FROM ${table.name}`,
         ).first<{ last_update: string | null }>();
 
         const lastUpdate = result?.last_update || null;
@@ -67,7 +67,8 @@ export class DiagnosticsService extends BaseService {
         if (lastUpdate) {
           const lastUpdateDate = new Date(lastUpdate);
           const now = new Date();
-          ageInHours = (now.getTime() - lastUpdateDate.getTime()) / (1000 * 60 * 60);
+          ageInHours =
+            (now.getTime() - lastUpdateDate.getTime()) / (1000 * 60 * 60);
           isStale = ageInHours > table.staleHours;
         } else {
           isStale = true;
@@ -105,7 +106,7 @@ export class DiagnosticsService extends BaseService {
       for (let i = 0; i < limit; i++) {
         const date = new Date();
         date.setDate(date.getDate() - i);
-        days.push(date.toISOString().split('T')[0]);
+        days.push(date.toISOString().split("T")[0]);
       }
 
       const history: ScanHistoryEntry[] = [];
@@ -113,14 +114,20 @@ export class DiagnosticsService extends BaseService {
       for (const day of days) {
         const [repos, analyses, alerts] = await Promise.all([
           this.env.DB.prepare(
-            "SELECT COUNT(*) as count FROM repositories WHERE DATE(discovered_at) = ?"
-          ).bind(day).first<{ count: number }>(),
+            "SELECT COUNT(*) as count FROM repositories WHERE DATE(discovered_at) = ?",
+          )
+            .bind(day)
+            .first<{ count: number }>(),
           this.env.DB.prepare(
-            "SELECT COUNT(*) as count FROM analyses WHERE DATE(created_at) = ?"
-          ).bind(day).first<{ count: number }>(),
+            "SELECT COUNT(*) as count FROM analyses WHERE DATE(created_at) = ?",
+          )
+            .bind(day)
+            .first<{ count: number }>(),
           this.env.DB.prepare(
-            "SELECT COUNT(*) as count FROM alerts WHERE DATE(sent_at) = ?"
-          ).bind(day).first<{ count: number }>(),
+            "SELECT COUNT(*) as count FROM alerts WHERE DATE(sent_at) = ?",
+          )
+            .bind(day)
+            .first<{ count: number }>(),
         ]);
 
         history.push({
@@ -134,14 +141,16 @@ export class DiagnosticsService extends BaseService {
 
       return history;
     } catch (error) {
-      return [{
-        timestamp: new Date().toISOString(),
-        reposScanned: 0,
-        analysesPerformed: 0,
-        alertsSent: 0,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }];
+      return [
+        {
+          timestamp: new Date().toISOString(),
+          reposScanned: 0,
+          analysesPerformed: 0,
+          alertsSent: 0,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      ];
     }
   }
 
@@ -150,21 +159,21 @@ export class DiagnosticsService extends BaseService {
    */
   async checkTables(): Promise<TableInfo[]> {
     const requiredTables = [
-      'repositories',
-      'repo_metrics',
-      'analyses',
-      'alerts',
-      'contributors',
-      'trends',
-      'repository_tiers',
-      'repo_tiers',
-      'commit_metrics',
-      'release_history',
-      'pull_request_metrics',
-      'issue_metrics',
-      'star_history',
-      'fork_analysis',
-      'api_usage',
+      "repositories",
+      "repo_metrics",
+      "analyses",
+      "alerts",
+      "contributors",
+      "trends",
+      "repository_tiers",
+      "repo_tiers",
+      "commit_metrics",
+      "release_history",
+      "pull_request_metrics",
+      "issue_metrics",
+      "star_history",
+      "fork_analysis",
+      "api_usage",
     ];
 
     const tableInfo: TableInfo[] = [];
@@ -172,7 +181,7 @@ export class DiagnosticsService extends BaseService {
     for (const tableName of requiredTables) {
       try {
         const countResult = await this.env.DB.prepare(
-          `SELECT COUNT(*) as count FROM ${tableName}`
+          `SELECT COUNT(*) as count FROM ${tableName}`,
         ).first<{ count: number }>();
 
         const lastUpdateResult = await this.env.DB.prepare(
@@ -185,7 +194,7 @@ export class DiagnosticsService extends BaseService {
               WHEN EXISTS (SELECT 1 FROM pragma_table_info('${tableName}') WHERE name = 'discovered_at') THEN discovered_at
               ELSE NULL
             END
-          ) as last_update FROM ${tableName}`
+          ) as last_update FROM ${tableName}`,
         ).first<{ last_update: string | null }>();
 
         tableInfo.push({
@@ -223,7 +232,8 @@ export class DiagnosticsService extends BaseService {
       const cutoff = new Date();
       cutoff.setHours(cutoff.getHours() - hoursThreshold);
 
-      const staleRepos = await this.env.DB.prepare(`
+      const staleRepos = await this.env.DB.prepare(
+        `
         SELECT 
           r.id,
           r.full_name,
@@ -240,10 +250,13 @@ export class DiagnosticsService extends BaseService {
            OR rt.last_basic_scan < ?
         ORDER BY rt.tier ASC, r.stars DESC
         LIMIT 20
-      `).bind(cutoff.toISOString()).all();
+      `,
+      )
+        .bind(cutoff.toISOString())
+        .all();
 
       const totalResult = await this.env.DB.prepare(
-        "SELECT COUNT(*) as count FROM repositories"
+        "SELECT COUNT(*) as count FROM repositories",
       ).first<{ count: number }>();
 
       return {
@@ -251,7 +264,7 @@ export class DiagnosticsService extends BaseService {
         stale: staleRepos.results as any[],
       };
     } catch (error) {
-      console.error('Error getting stale repositories:', error);
+      console.error("Error getting stale repositories:", error);
       return { total: 0, stale: [] };
     }
   }
@@ -268,51 +281,58 @@ export class DiagnosticsService extends BaseService {
 
     // Check for missing tables
     const missingTables = tables
-      .filter(t => t.rowCount === -1)
-      .map(t => t.name);
+      .filter((t) => t.rowCount === -1)
+      .map((t) => t.name);
 
     // Check database status
-    const databaseStatus = missingTables.length === 0 
-      ? 'healthy' 
-      : missingTables.includes('repositories') || missingTables.includes('repo_tiers')
-        ? 'error'
-        : 'degraded';
+    const databaseStatus =
+      missingTables.length === 0
+        ? "healthy"
+        : missingTables.includes("repositories") ||
+            missingTables.includes("repo_tiers")
+          ? "error"
+          : "degraded";
 
     // Check data freshness
-    const staleCount = freshness.filter(f => f.isStale).length;
-    const dataFreshness = staleCount === 0 
-      ? 'fresh' 
-      : staleCount > freshness.length / 2
-        ? 'critical'
-        : 'stale';
+    const staleCount = freshness.filter((f) => f.isStale).length;
+    const dataFreshness =
+      staleCount === 0
+        ? "fresh"
+        : staleCount > freshness.length / 2
+          ? "critical"
+          : "stale";
 
     // Check last scan status
     const lastScan = scanHistory[0];
-    const lastScanStatus = lastScan 
-      ? lastScan.success ? 'success' : 'failed'
-      : 'unknown';
+    const lastScanStatus = lastScan
+      ? lastScan.success
+        ? "success"
+        : "failed"
+      : "unknown";
 
     // Generate recommendations
     const recommendations: string[] = [];
-    
-    if (missingTables.includes('repo_tiers')) {
-      recommendations.push('Run migrate-repo-tiers.sql to create missing repo_tiers table');
-    }
-    
-    if (dataFreshness === 'critical') {
-      recommendations.push('Data is critically stale. Check if scheduled scans are running');
-    }
-    
-    if (lastScanStatus === 'failed') {
-      recommendations.push('Last scan failed. Check worker logs for errors');
+
+    if (missingTables.includes("repo_tiers")) {
+      recommendations.push(
+        "Run migrate-repo-tiers.sql to create missing repo_tiers table",
+      );
     }
 
-    const staleTables = freshness
-      .filter(f => f.isStale)
-      .map(f => f.table);
-    
+    if (dataFreshness === "critical") {
+      recommendations.push(
+        "Data is critically stale. Check if scheduled scans are running",
+      );
+    }
+
+    if (lastScanStatus === "failed") {
+      recommendations.push("Last scan failed. Check worker logs for errors");
+    }
+
+    const staleTables = freshness.filter((f) => f.isStale).map((f) => f.table);
+
     if (staleTables.length > 0) {
-      recommendations.push(`Stale data in tables: ${staleTables.join(', ')}`);
+      recommendations.push(`Stale data in tables: ${staleTables.join(", ")}`);
     }
 
     return {
@@ -339,32 +359,41 @@ export class DiagnosticsService extends BaseService {
       // Use active filtering (excluding archived and fork repositories) for ALL counts
       // This ensures consistency with Leaderboard page counts
       const [tier1, tier2, tier3, totalActive] = await Promise.all([
-        this.env.DB.prepare(`
+        this.env.DB.prepare(
+          `
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
           WHERE rt.tier = 1 AND r.is_archived = 0 AND r.is_fork = 0
-        `).first<{ count: number }>(),
-        this.env.DB.prepare(`
+        `,
+        ).first<{ count: number }>(),
+        this.env.DB.prepare(
+          `
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
           WHERE rt.tier = 2 AND r.is_archived = 0 AND r.is_fork = 0
-        `).first<{ count: number }>(),
-        this.env.DB.prepare(`
+        `,
+        ).first<{ count: number }>(),
+        this.env.DB.prepare(
+          `
           SELECT COUNT(*) as count 
           FROM repositories r 
           JOIN repo_tiers rt ON r.id = rt.repo_id 
           WHERE rt.tier = 3 AND r.is_archived = 0 AND r.is_fork = 0
-        `).first<{ count: number }>(),
-        this.env.DB.prepare(`
+        `,
+        ).first<{ count: number }>(),
+        this.env.DB.prepare(
+          `
           SELECT COUNT(*) as count 
           FROM repositories 
           WHERE is_archived = 0 AND is_fork = 0
-        `).first<{ count: number }>(),
+        `,
+        ).first<{ count: number }>(),
       ]);
 
-      const assigned = (tier1?.count || 0) + (tier2?.count || 0) + (tier3?.count || 0);
+      const assigned =
+        (tier1?.count || 0) + (tier2?.count || 0) + (tier3?.count || 0);
       const unassigned = (totalActive?.count || 0) - assigned;
 
       return {

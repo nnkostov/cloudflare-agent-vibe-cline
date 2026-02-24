@@ -1,8 +1,8 @@
-import type { Env } from './types';
+import type { Env } from "./types";
 
 interface TailEvent {
   scriptName: string;
-  outcome: 'ok' | 'exception' | 'exceededCpu' | 'canceled' | 'unknown';
+  outcome: "ok" | "exception" | "exceededCpu" | "canceled" | "unknown";
   eventTimestamp: number;
   event: {
     request?: {
@@ -18,7 +18,7 @@ interface TailEvent {
   };
   logs: Array<{
     message: string[];
-    level: 'log' | 'error' | 'warn' | 'info' | 'debug';
+    level: "log" | "error" | "warn" | "info" | "debug";
     timestamp: number;
   }>;
   exceptions: Array<{
@@ -71,12 +71,12 @@ export class TailWorker {
 
   async tail(events: TailEvent[]): Promise<void> {
     console.log(`[TailWorker] Processing ${events.length} events`);
-    
+
     for (const event of events) {
       try {
         await this.processEvent(event);
       } catch (error) {
-        console.error('[TailWorker] Error processing event:', error);
+        console.error("[TailWorker] Error processing event:", error);
       }
     }
 
@@ -105,27 +105,27 @@ export class TailWorker {
     // Process console logs
     for (const log of event.logs) {
       const processedLog: ProcessedLog = {
-        ...baseLog as ProcessedLog,
+        ...(baseLog as ProcessedLog),
         log_level: log.level,
-        log_message: log.message.join(' '),
+        log_message: log.message.join(" "),
       };
 
       // Extract metrics from structured logs
       this.extractMetrics(processedLog, log.message);
-      
+
       this.logBatch.push(processedLog);
     }
 
     // Process exceptions
     for (const exception of event.exceptions) {
       const processedLog: ProcessedLog = {
-        ...baseLog as ProcessedLog,
-        log_level: 'error',
+        ...(baseLog as ProcessedLog),
+        log_level: "error",
         error_name: exception.name,
         error_message: exception.message,
         error_stack: exception.stack,
       };
-      
+
       this.logBatch.push(processedLog);
     }
 
@@ -136,74 +136,80 @@ export class TailWorker {
   }
 
   private extractMetrics(log: ProcessedLog, messages: string[]): void {
-    const message = messages.join(' ');
-    
+    const message = messages.join(" ");
+
     // Extract API call counts with better pattern matching
     const apiCalls = { github: 0, claude: 0 };
-    
+
     // Look for explicit API call markers first
-    if (message.includes('[API CALL]')) {
-      if (message.includes('GitHub') || message.includes('github')) {
+    if (message.includes("[API CALL]")) {
+      if (message.includes("GitHub") || message.includes("github")) {
         apiCalls.github = 1;
       }
-      if (message.includes('Claude') || message.includes('claude')) {
+      if (message.includes("Claude") || message.includes("claude")) {
         apiCalls.claude = 1;
       }
     }
-    
+
     // GitHub API detection - look for various GitHub-related patterns
-    if (message.includes('GitHub') || 
-        message.includes('github') ||
-        message.includes('octokit') ||
-        message.includes('repos.get') ||
-        message.includes('search.repos') ||
-        message.includes('listContributors') ||
-        message.includes('getReadme')) {
+    if (
+      message.includes("GitHub") ||
+      message.includes("github") ||
+      message.includes("octokit") ||
+      message.includes("repos.get") ||
+      message.includes("search.repos") ||
+      message.includes("listContributors") ||
+      message.includes("getReadme")
+    ) {
       apiCalls.github = 1;
     }
-    
+
     // Claude API detection - look for Claude/Anthropic patterns
-    if (message.includes('Claude') || 
-        message.includes('claude') ||
-        message.includes('Anthropic') ||
-        message.includes('anthropic') ||
-        message.includes('Model:') && message.includes('tokens') ||
-        message.includes('analyze repository')) {
+    if (
+      message.includes("Claude") ||
+      message.includes("claude") ||
+      message.includes("Anthropic") ||
+      message.includes("anthropic") ||
+      (message.includes("Model:") && message.includes("tokens")) ||
+      message.includes("analyze repository")
+    ) {
       apiCalls.claude = 1;
     }
-    
+
     // GitHub Search API specific detection
-    if (message.includes('search query') || 
-        message.includes('search.repos') ||
-        message.includes('searchTrendingRepos')) {
+    if (
+      message.includes("search query") ||
+      message.includes("search.repos") ||
+      message.includes("searchTrendingRepos")
+    ) {
       apiCalls.github = 1; // Count search as GitHub API call
     }
-    
+
     if (apiCalls.github > 0 || apiCalls.claude > 0) {
       log.api_calls = apiCalls;
     }
 
     // Extract scan/analysis metrics
     const metrics: any = {};
-    
+
     // Look for repository scan patterns
     const scanMatch = message.match(/Found (\d+) repositories/);
     if (scanMatch) {
       metrics.repos_scanned = parseInt(scanMatch[1]);
     }
-    
+
     // Look for analysis patterns
     const analyzeMatch = message.match(/Analyzing (\d+) repositories/);
     if (analyzeMatch) {
       metrics.repos_analyzed = parseInt(analyzeMatch[1]);
     }
-    
+
     // Look for alert patterns
     const alertMatch = message.match(/Generated (\d+) alerts?/);
     if (alertMatch) {
       metrics.alerts_generated = parseInt(alertMatch[1]);
     }
-    
+
     if (Object.keys(metrics).length > 0) {
       log.metrics = metrics;
     }
@@ -217,42 +223,49 @@ export class TailWorker {
 
   private async flushLogs(): Promise<void> {
     if (this.logBatch.length === 0) return;
-    
-    console.log(`[TailWorker] Flushing ${this.logBatch.length} logs to database`);
-    
+
+    console.log(
+      `[TailWorker] Flushing ${this.logBatch.length} logs to database`,
+    );
+
     try {
       // Batch insert logs into D1
-      const values = this.logBatch.map(log => 
-        `('${log.id}', '${log.timestamp}', '${log.script_name}', '${log.outcome}', 
-          ${log.request_url ? `'${this.escapeString(log.request_url)}'` : 'NULL'}, 
-          ${log.request_method ? `'${log.request_method}'` : 'NULL'},
-          ${log.cf_colo ? `'${log.cf_colo}'` : 'NULL'},
-          ${log.cf_country ? `'${log.cf_country}'` : 'NULL'},
-          ${log.duration_ms || 'NULL'},
-          ${log.log_level ? `'${log.log_level}'` : 'NULL'},
-          ${log.log_message ? `'${this.escapeString(log.log_message)}'` : 'NULL'},
-          ${log.error_name ? `'${this.escapeString(log.error_name)}'` : 'NULL'},
-          ${log.error_message ? `'${this.escapeString(log.error_message)}'` : 'NULL'},
-          ${log.error_stack ? `'${this.escapeString(log.error_stack)}'` : 'NULL'},
-          ${log.api_calls ? `'${JSON.stringify(log.api_calls)}'` : 'NULL'},
-          ${log.metrics ? `'${JSON.stringify(log.metrics)}'` : 'NULL'})`
-      ).join(',\n');
+      const values = this.logBatch
+        .map(
+          (log) =>
+            `('${log.id}', '${log.timestamp}', '${log.script_name}', '${log.outcome}', 
+          ${log.request_url ? `'${this.escapeString(log.request_url)}'` : "NULL"}, 
+          ${log.request_method ? `'${log.request_method}'` : "NULL"},
+          ${log.cf_colo ? `'${log.cf_colo}'` : "NULL"},
+          ${log.cf_country ? `'${log.cf_country}'` : "NULL"},
+          ${log.duration_ms || "NULL"},
+          ${log.log_level ? `'${log.log_level}'` : "NULL"},
+          ${log.log_message ? `'${this.escapeString(log.log_message)}'` : "NULL"},
+          ${log.error_name ? `'${this.escapeString(log.error_name)}'` : "NULL"},
+          ${log.error_message ? `'${this.escapeString(log.error_message)}'` : "NULL"},
+          ${log.error_stack ? `'${this.escapeString(log.error_stack)}'` : "NULL"},
+          ${log.api_calls ? `'${JSON.stringify(log.api_calls)}'` : "NULL"},
+          ${log.metrics ? `'${JSON.stringify(log.metrics)}'` : "NULL"})`,
+        )
+        .join(",\n");
 
-      await this.env.DB.prepare(`
+      await this.env.DB.prepare(
+        `
         INSERT INTO tail_logs (
           id, timestamp, script_name, outcome, request_url, request_method,
           cf_colo, cf_country, duration_ms, log_level, log_message,
           error_name, error_message, error_stack, api_calls, metrics
         ) VALUES ${values}
-      `).run();
+      `,
+      ).run();
 
       // Also send critical errors to an alert endpoint
-      const criticalErrors = this.logBatch.filter(log => 
-        log.error_name && (
-          log.error_message?.includes('rate limit') ||
-          log.error_message?.includes('API key') ||
-          log.error_name.includes('Critical')
-        )
+      const criticalErrors = this.logBatch.filter(
+        (log) =>
+          log.error_name &&
+          (log.error_message?.includes("rate limit") ||
+            log.error_message?.includes("API key") ||
+            log.error_name.includes("Critical")),
       );
 
       if (criticalErrors.length > 0) {
@@ -262,8 +275,8 @@ export class TailWorker {
       // Clear the batch
       this.logBatch = [];
     } catch (error) {
-      console.error('[TailWorker] Error flushing logs:', error);
-      
+      console.error("[TailWorker] Error flushing logs:", error);
+
       // Try to at least save to R2 as backup
       try {
         const timestamp = new Date().toISOString();
@@ -271,9 +284,9 @@ export class TailWorker {
         await this.env.STORAGE.put(key, JSON.stringify(this.logBatch));
         console.log(`[TailWorker] Saved failed logs to R2: ${key}`);
       } catch (r2Error) {
-        console.error('[TailWorker] Failed to save to R2:', r2Error);
+        console.error("[TailWorker] Failed to save to R2:", r2Error);
       }
-      
+
       // Clear batch to prevent memory issues
       this.logBatch = [];
     }
@@ -282,9 +295,10 @@ export class TailWorker {
   private async sendAlerts(errors: ProcessedLog[]): Promise<void> {
     // In a real implementation, this could send to Slack, email, etc.
     console.log(`[TailWorker] Sending ${errors.length} critical error alerts`);
-    
+
     for (const error of errors) {
-      await this.env.DB.prepare(`
+      await this.env.DB.prepare(
+        `
         INSERT INTO alerts (repo_id, type, level, message, metadata)
         VALUES (
           'system',
@@ -293,15 +307,18 @@ export class TailWorker {
           ?,
           ?
         )
-      `).bind(
-        `System Error: ${error.error_name} - ${error.error_message}`,
-        JSON.stringify({
-          timestamp: error.timestamp,
-          script_name: error.script_name,
-          error_stack: error.error_stack,
-          request_url: error.request_url,
-        })
-      ).run();
+      `,
+      )
+        .bind(
+          `System Error: ${error.error_name} - ${error.error_message}`,
+          JSON.stringify({
+            timestamp: error.timestamp,
+            script_name: error.script_name,
+            error_stack: error.error_stack,
+            request_url: error.request_url,
+          }),
+        )
+        .run();
     }
   }
 
@@ -310,7 +327,7 @@ export class TailWorker {
   }
 
   private escapeString(str: string): string {
-    return str.replace(/'/g, "''").replace(/\\/g, '\\\\');
+    return str.replace(/'/g, "''").replace(/\\/g, "\\\\");
   }
 }
 
@@ -318,5 +335,5 @@ export default {
   async tail(events: TailEvent[], env: Env): Promise<void> {
     const worker = new TailWorker(env);
     await worker.tail(events);
-  }
+  },
 };

@@ -4,10 +4,10 @@
  */
 
 export interface RateLimiterOptions {
-  maxRequests: number;      // Maximum requests per window
-  windowMs: number;         // Time window in milliseconds
-  maxBurst?: number;        // Maximum burst size (defaults to maxRequests)
-  minDelay?: number;        // Minimum delay between requests in ms
+  maxRequests: number; // Maximum requests per window
+  windowMs: number; // Time window in milliseconds
+  maxBurst?: number; // Maximum burst size (defaults to maxRequests)
+  minDelay?: number; // Minimum delay between requests in ms
 }
 
 export class RateLimiter {
@@ -51,7 +51,10 @@ export class RateLimiter {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequest;
     if (timeSinceLastRequest < this.minDelay) {
-      setTimeout(() => this.processQueue(), this.minDelay - timeSinceLastRequest);
+      setTimeout(
+        () => this.processQueue(),
+        this.minDelay - timeSinceLastRequest,
+      );
       return;
     }
 
@@ -69,7 +72,7 @@ export class RateLimiter {
       this.tokens--;
       this.lastRequest = Date.now();
       resolve();
-      
+
       // Process next request after minimum delay
       if (this.queue.length > 0) {
         setTimeout(() => this.processQueue(), this.minDelay);
@@ -84,7 +87,7 @@ export class RateLimiter {
     const now = Date.now();
     const timePassed = now - this.lastRefill;
     const tokensToAdd = (timePassed / this.windowMs) * this.maxTokens;
-    
+
     this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
     this.lastRefill = now;
   }
@@ -122,40 +125,40 @@ export class RateLimiter {
  * - But we use conservative limits to avoid abuse detection
  */
 export const githubRateLimiter = new RateLimiter({
-  maxRequests: 30,        // 30 requests per minute (very conservative)
-  windowMs: 60 * 1000,    // 1 minute window
-  maxBurst: 10,           // Allow burst of 10 requests
-  minDelay: 100,          // 100ms minimum between requests
+  maxRequests: 30, // 30 requests per minute (very conservative)
+  windowMs: 60 * 1000, // 1 minute window
+  maxBurst: 10, // Allow burst of 10 requests
+  minDelay: 100, // 100ms minimum between requests
 });
 
 /**
  * GitHub search API rate limiter (more restrictive)
  */
 export const githubSearchRateLimiter = new RateLimiter({
-  maxRequests: 10,        // 10 searches per minute
-  windowMs: 60 * 1000,    // 1 minute window
-  maxBurst: 3,            // Allow burst of 3 searches
-  minDelay: 1000,         // 1 second minimum between searches
+  maxRequests: 10, // 10 searches per minute
+  windowMs: 60 * 1000, // 1 minute window
+  maxBurst: 3, // Allow burst of 3 searches
+  minDelay: 1000, // 1 second minimum between searches
 });
 
 /**
  * Claude/Anthropic API rate limiter (very restrictive)
  */
 export const claudeRateLimiter = new RateLimiter({
-  maxRequests: 5,         // 5 requests per minute (conservative for free tier)
-  windowMs: 60 * 1000,    // 1 minute window
-  maxBurst: 2,            // Small burst allowed
-  minDelay: 2000,         // 2 seconds minimum between requests
+  maxRequests: 5, // 5 requests per minute (conservative for free tier)
+  windowMs: 60 * 1000, // 1 minute window
+  maxBurst: 2, // Small burst allowed
+  minDelay: 2000, // 2 seconds minimum between requests
 });
 
 /**
  * Generic external API rate limiter
  */
 export const externalApiRateLimiter = new RateLimiter({
-  maxRequests: 60,        // 60 requests per minute
-  windowMs: 60 * 1000,    // 1 minute window
-  maxBurst: 10,           // Reasonable burst
-  minDelay: 50,           // 50ms minimum between requests
+  maxRequests: 60, // 60 requests per minute
+  windowMs: 60 * 1000, // 1 minute window
+  maxBurst: 10, // Reasonable burst
+  minDelay: 50, // 50ms minimum between requests
 });
 
 /**
@@ -165,7 +168,7 @@ export function RateLimit(limiter: RateLimiter) {
   return function (
     target: any,
     propertyKey: string,
-    descriptor: PropertyDescriptor
+    descriptor: PropertyDescriptor,
   ) {
     const originalMethod = descriptor.value;
 
@@ -188,7 +191,7 @@ export async function withExponentialBackoff<T>(
     initialDelay?: number;
     maxDelay?: number;
     factor?: number;
-  } = {}
+  } = {},
 ): Promise<T> {
   const {
     maxRetries = 3,
@@ -205,13 +208,15 @@ export async function withExponentialBackoff<T>(
       return await fn();
     } catch (error) {
       lastError = error as Error;
-      
+
       // Check if it's a rate limit error
-      if (error instanceof Error && error.message.includes('abuse detection')) {
-        console.warn(`Rate limit hit, waiting ${delay}ms before retry ${i + 1}/${maxRetries}`);
-        
+      if (error instanceof Error && error.message.includes("abuse detection")) {
+        console.warn(
+          `Rate limit hit, waiting ${delay}ms before retry ${i + 1}/${maxRetries}`,
+        );
+
         if (i < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           delay = Math.min(delay * factor, maxDelay);
         }
       } else {

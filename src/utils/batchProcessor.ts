@@ -18,7 +18,7 @@ export class BatchProcessor {
   async addToBatch<T>(
     key: string,
     items: T[],
-    processor: (batch: T[]) => Promise<void>
+    processor: (batch: T[]) => Promise<void>,
   ): Promise<void> {
     // Get or create queue for this key
     if (!this.queue.has(key)) {
@@ -42,7 +42,7 @@ export class BatchProcessor {
    */
   async flush<T>(
     key: string,
-    processor: (batch: T[]) => Promise<void>
+    processor: (batch: T[]) => Promise<void>,
   ): Promise<void> {
     const queue = this.queue.get(key);
     if (!queue || queue.length === 0) return;
@@ -89,7 +89,7 @@ export class BatchProcessor {
    */
   private setupFlushTimer<T>(
     key: string,
-    processor: (batch: T[]) => Promise<void>
+    processor: (batch: T[]) => Promise<void>,
   ): void {
     // Clear existing timer if any
     const existingTimer = this.timers.get(key);
@@ -112,7 +112,7 @@ export class BatchProcessor {
     items: T[],
     chunkSize: number,
     processor: (chunk: T[]) => Promise<R[]>,
-    maxConcurrency: number = 3
+    maxConcurrency: number = 3,
   ): Promise<R[]> {
     const results: R[] = [];
     const chunks: T[][] = [];
@@ -126,7 +126,7 @@ export class BatchProcessor {
     for (let i = 0; i < chunks.length; i += maxConcurrency) {
       const batch = chunks.slice(i, i + maxConcurrency);
       const batchResults = await Promise.all(
-        batch.map(chunk => processor(chunk))
+        batch.map((chunk) => processor(chunk)),
       );
       results.push(...batchResults.flat());
     }
