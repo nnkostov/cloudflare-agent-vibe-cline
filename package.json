@@ -1,6 +1,6 @@
 {
   "name": "github-ai-intelligence-agent",
-  "version": "2.0.76",
+  "version": "2.0.77",
   "description": "AI-powered GitHub repository intelligence agent for VC investment opportunities",
   "main": "src/index.ts",
   "scripts": {
@@ -34,7 +34,7 @@
     "prettier": "^3.0.0",
     "typescript": "^5.3.3",
     "vitest": "^3.2.4",
-    "wrangler": "^4.32.0"
+    "wrangler": "^4.68.1"
   },
   "engines": {
     "node": ">=18.0.0"
