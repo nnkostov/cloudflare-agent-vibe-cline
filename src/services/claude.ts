@@ -4,7 +4,7 @@ import { CONFIG as Config } from "../types";
 import {
   claudeRateLimiter,
   withExponentialBackoff,
-} from "../utils/simpleRateLimiter";
+} from "../utils/rateLimiter";
 
 interface ClaudeResponse {
   content: Array<{ type: "text"; text: string }>;

@@ -93,18 +93,46 @@ export class RateLimiter {
   }
 
   /**
+   * Check if a request should be allowed (non-blocking)
+   * Returns true if tokens are available, false if rate limited
+   */
+  async checkLimit(): Promise<boolean> {
+    this.refillTokens();
+    if (this.tokens < 1) {
+      return false;
+    }
+    this.tokens--;
+    this.lastRequest = Date.now();
+    return true;
+  }
+
+  /**
+   * Get wait time in ms until next token is available
+   */
+  getWaitTime(): number {
+    this.refillTokens();
+    if (this.tokens >= 1) return 0;
+    const tokensNeeded = 1 - this.tokens;
+    return Math.ceil((tokensNeeded / this.maxTokens) * this.windowMs);
+  }
+
+  /**
    * Get current rate limit status
    */
   getStatus(): {
     availableTokens: number;
     maxTokens: number;
     queueLength: number;
+    remaining: number;
+    resetTime: number;
   } {
     this.refillTokens();
     return {
       availableTokens: Math.floor(this.tokens),
       maxTokens: this.maxTokens,
       queueLength: this.queue.length,
+      remaining: Math.floor(this.tokens),
+      resetTime: this.lastRefill + this.windowMs,
     };
   }
 
@@ -183,22 +211,29 @@ export function RateLimit(limiter: RateLimiter) {
 
 /**
  * Exponential backoff for retry logic
+ * Accepts either a number (maxRetries) or an options object
  */
 export async function withExponentialBackoff<T>(
   fn: () => Promise<T>,
-  options: {
-    maxRetries?: number;
-    initialDelay?: number;
-    maxDelay?: number;
-    factor?: number;
-  } = {},
+  optionsOrMaxRetries:
+    | number
+    | {
+        maxRetries?: number;
+        initialDelay?: number;
+        maxDelay?: number;
+        factor?: number;
+      } = {},
 ): Promise<T> {
+  const opts =
+    typeof optionsOrMaxRetries === "number"
+      ? { maxRetries: optionsOrMaxRetries }
+      : optionsOrMaxRetries;
   const {
     maxRetries = 3,
     initialDelay = 1000,
     maxDelay = 30000,
     factor = 2,
-  } = options;
+  } = opts;
 
   let lastError: Error;
   let delay = initialDelay;
@@ -209,19 +244,12 @@ export async function withExponentialBackoff<T>(
     } catch (error) {
       lastError = error as Error;
 
-      // Check if it's a rate limit error
-      if (error instanceof Error && error.message.includes("abuse detection")) {
+      if (i < maxRetries) {
         console.warn(
-          `Rate limit hit, waiting ${delay}ms before retry ${i + 1}/${maxRetries}`,
+          `Retry ${i + 1}/${maxRetries}, waiting ${delay}ms: ${lastError.message}`,
         );
-
-        if (i < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          delay = Math.min(delay * factor, maxDelay);
-        }
-      } else {
-        // For non-rate-limit errors, throw immediately
-        throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay = Math.min(delay * factor, maxDelay);
       }
     }
   }

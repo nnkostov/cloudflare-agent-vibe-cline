@@ -199,7 +199,7 @@ describe("ClaudeService", () => {
 
     it("should handle API errors gracefully", async () => {
       // Mock the rate limiter to allow the request
-      vi.mock("../utils/simpleRateLimiter", () => ({
+      vi.mock("../utils/rateLimiter", () => ({
         claudeRateLimiter: {
           checkLimit: vi.fn().mockResolvedValue(true),
           getWaitTime: vi.fn().mockReturnValue(0),
@@ -301,7 +301,7 @@ describe("ClaudeService", () => {
   describe("parseResponse", () => {
     it("should handle malformed JSON gracefully", async () => {
       // Mock the rate limiter to allow the request
-      vi.mock("../utils/simpleRateLimiter", () => ({
+      vi.mock("../utils/rateLimiter", () => ({
         claudeRateLimiter: {
           checkLimit: vi.fn().mockResolvedValue(true),
           getWaitTime: vi.fn().mockReturnValue(0),
@@ -334,7 +334,7 @@ describe("ClaudeService", () => {
 
     it("should extract JSON from response with extra text", async () => {
       // Mock the rate limiter to allow the request
-      vi.mock("../utils/simpleRateLimiter", () => ({
+      vi.mock("../utils/rateLimiter", () => ({
         claudeRateLimiter: {
           checkLimit: vi.fn().mockResolvedValue(true),
           getWaitTime: vi.fn().mockReturnValue(0),

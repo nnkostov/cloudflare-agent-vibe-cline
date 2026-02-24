@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ClaudeService } from "../services/claude";
 import { RepoAnalyzer } from "../analyzers/repoAnalyzer";
+import { claudeRateLimiter } from "../utils/rateLimiter";
 import type { Repository, Env } from "../types";
 
 // Mock fetch globally
@@ -23,6 +24,7 @@ describe("Claude 4 Integration Tests", () => {
 
     claudeService = new ClaudeService(mockEnv);
     repoAnalyzer = new RepoAnalyzer(mockEnv);
+    claudeRateLimiter.reset();
     vi.clearAllMocks();
   });
 
@@ -351,10 +353,12 @@ LangChain is a framework for developing applications powered by language models.
       const model = repoAnalyzer.getRecommendedModel(score);
 
       // Mock rate limiter to allow the request
-      vi.mock("../utils/simpleRateLimiter", () => ({
+      vi.mock("../utils/rateLimiter", () => ({
         claudeRateLimiter: {
           checkLimit: vi.fn().mockResolvedValue(true),
           getWaitTime: vi.fn().mockReturnValue(0),
+          reset: vi.fn(),
+          getStatus: vi.fn().mockReturnValue({ remaining: 5, resetTime: Date.now() + 60000 }),
         },
         withExponentialBackoff: vi.fn((fn) => fn()),
       }));

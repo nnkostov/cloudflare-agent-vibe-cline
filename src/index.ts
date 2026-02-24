@@ -1,6 +1,5 @@
 import type { Env, Repository } from "./types";
 import { BaseService } from "./services/base";
-import { StreamProcessor } from "./utils/streamProcessor";
 import { PerformanceMonitor } from "./utils/performanceMonitor";
 import { getAssetFromKV } from "@cloudflare/kv-asset-handler";
 

@@ -8,16 +8,13 @@ import type {
   Trend,
 } from "../types";
 import { BaseService } from "./base";
-import { BatchProcessor } from "../utils/batchProcessor";
 import { PerformanceMonitor } from "../utils/performanceMonitor";
 
 export class StorageService extends BaseService {
-  private batchProcessor: BatchProcessor;
   private performanceMonitor: PerformanceMonitor;
 
   constructor(env: Env) {
     super(env);
-    this.batchProcessor = new BatchProcessor(100, 5000);
     this.performanceMonitor = new PerformanceMonitor();
   }
 
