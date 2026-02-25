@@ -10,7 +10,7 @@ export function viteVersionPlugin() {
     config(config, { command }) {
       // Read version from package.json
       const packageJsonPath = resolve(process.cwd(), '../package.json');
-      let version = '2.0.0';
+      let version = '1.0.0';
       
       try {
         const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
