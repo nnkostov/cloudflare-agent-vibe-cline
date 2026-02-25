@@ -43,13 +43,13 @@ export class DiagnosticsService extends BaseService {
   async checkDataFreshness(): Promise<DataFreshnessInfo[]> {
     const tables = [
       { name: "repositories", column: "discovered_at", staleHours: 24 },
-      { name: "repo_metrics", column: "recorded_at", staleHours: 6 },
+      { name: "repo_metrics", column: "recorded_at", staleHours: 48 },
       { name: "analyses", column: "created_at", staleHours: 168 },
-      { name: "alerts", column: "sent_at", staleHours: 24 },
-      { name: "commit_metrics", column: "recorded_at", staleHours: 24 },
-      { name: "release_history", column: "recorded_at", staleHours: 48 },
-      { name: "star_history", column: "recorded_at", staleHours: 24 },
-      { name: "repo_tiers", column: "updated_at", staleHours: 12 },
+      { name: "alerts", column: "sent_at", staleHours: 168 },
+      { name: "commit_metrics", column: "recorded_at", staleHours: 48 },
+      { name: "release_history", column: "recorded_at", staleHours: 168 },
+      { name: "star_history", column: "recorded_at", staleHours: 48 },
+      { name: "repo_tiers", column: "updated_at", staleHours: 48 },
     ];
 
     const freshnessInfo: DataFreshnessInfo[] = [];
@@ -158,53 +158,52 @@ export class DiagnosticsService extends BaseService {
    * Check if all required tables exist
    */
   async checkTables(): Promise<TableInfo[]> {
-    const requiredTables = [
-      "repositories",
-      "repo_metrics",
-      "analyses",
-      "alerts",
-      "contributors",
-      "trends",
-      "repo_tiers",
-      "commit_metrics",
-      "release_history",
-      "pr_metrics",
-      "issue_metrics",
-      "star_history",
-      "fork_analysis",
-      "api_usage",
+    // Static column map — no runtime introspection needed
+    const requiredTables: Array<{
+      name: string;
+      timestampColumn: string | null;
+    }> = [
+      { name: "repositories", timestampColumn: "updated_at" },
+      { name: "repo_metrics", timestampColumn: "recorded_at" },
+      { name: "analyses", timestampColumn: "created_at" },
+      { name: "alerts", timestampColumn: "sent_at" },
+      { name: "contributors", timestampColumn: "created_at" },
+      { name: "trends", timestampColumn: "detected_at" },
+      { name: "repo_tiers", timestampColumn: "updated_at" },
+      { name: "commit_metrics", timestampColumn: "recorded_at" },
+      { name: "release_history", timestampColumn: "recorded_at" },
+      { name: "pr_metrics", timestampColumn: "recorded_at" },
+      { name: "issue_metrics", timestampColumn: "recorded_at" },
+      { name: "star_history", timestampColumn: "recorded_at" },
+      { name: "fork_analysis", timestampColumn: "recorded_at" },
+      { name: "api_usage", timestampColumn: "timestamp" },
     ];
 
     const tableInfo: TableInfo[] = [];
 
-    for (const tableName of requiredTables) {
+    for (const table of requiredTables) {
       try {
         const countResult = await this.env.DB.prepare(
-          `SELECT COUNT(*) as count FROM ${tableName}`,
+          `SELECT COUNT(*) as count FROM ${table.name}`,
         ).first<{ count: number }>();
 
-        const lastUpdateResult = await this.env.DB.prepare(
-          `SELECT MAX(
-            CASE 
-              WHEN EXISTS (SELECT 1 FROM pragma_table_info('${tableName}') WHERE name = 'created_at') THEN created_at
-              WHEN EXISTS (SELECT 1 FROM pragma_table_info('${tableName}') WHERE name = 'recorded_at') THEN recorded_at
-              WHEN EXISTS (SELECT 1 FROM pragma_table_info('${tableName}') WHERE name = 'updated_at') THEN updated_at
-              WHEN EXISTS (SELECT 1 FROM pragma_table_info('${tableName}') WHERE name = 'sent_at') THEN sent_at
-              WHEN EXISTS (SELECT 1 FROM pragma_table_info('${tableName}') WHERE name = 'discovered_at') THEN discovered_at
-              ELSE NULL
-            END
-          ) as last_update FROM ${tableName}`,
-        ).first<{ last_update: string | null }>();
+        let lastUpdated: string | null = null;
+        if (table.timestampColumn) {
+          const result = await this.env.DB.prepare(
+            `SELECT MAX(${table.timestampColumn}) as last_update FROM ${table.name}`,
+          ).first<{ last_update: string | null }>();
+          lastUpdated = result?.last_update || null;
+        }
 
         tableInfo.push({
-          name: tableName,
+          name: table.name,
           rowCount: countResult?.count || 0,
-          lastUpdated: lastUpdateResult?.last_update || null,
+          lastUpdated,
         });
       } catch (error) {
         // Table doesn't exist
         tableInfo.push({
-          name: tableName,
+          name: table.name,
           rowCount: -1,
           lastUpdated: null,
         });

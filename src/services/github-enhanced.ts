@@ -573,8 +573,8 @@ export class GitHubEnhancedService extends BaseService {
           .sort((a, b) => b.stars - a.stars)
           .slice(0, limit);
       },
-      { timeout: 60000 },
-    ); // 60 second timeout for comprehensive search
+      { timeout: 180000 },
+    ); // 180 second timeout for comprehensive search
   }
 
   /**

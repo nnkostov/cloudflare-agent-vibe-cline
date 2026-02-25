@@ -183,7 +183,12 @@ export class GitHubAgent {
    * Handle manual scan request
    */
   private async handleScan(request: Request): Promise<Response> {
-    const body = (await request.json()) as any;
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Empty or invalid body — use defaults
+    }
     const topics = body.topics || Config.github.topics;
     const minStars = body.minStars || Config.github.minStars;
 
