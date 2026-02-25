@@ -162,6 +162,23 @@ export class StorageService extends BaseService {
     );
   }
 
+  async getKnownRepoIds(): Promise<string[]> {
+    const rows = await this.dbAll<{ id: string }>(
+      "SELECT id FROM repositories",
+    );
+    return rows.map((r) => r.id);
+  }
+
+  async getRepoIdsWithRecentMetrics(
+    hours: number,
+  ): Promise<{ repo_id: string }[]> {
+    return this.dbAll<{ repo_id: string }>(
+      `SELECT DISTINCT repo_id FROM repo_metrics
+       WHERE recorded_at >= datetime('now', '-' || ? || ' hours')`,
+      hours,
+    );
+  }
+
   // Analysis operations
   async saveAnalysis(analysis: Analysis): Promise<void> {
     await this.dbRun(
@@ -184,11 +201,14 @@ export class StorageService extends BaseService {
       analysis.metadata.cost,
     );
 
-    // Archive to R2
-    await this.saveToR2(
-      `analyses/${analysis.repo_id}/${Date.now()}.json`,
-      analysis,
-    );
+    // Archive to R2 (best-effort; D1 record is authoritative)
+    const r2Key = `analyses/${analysis.repo_id}/${Date.now()}.json`;
+    const r2Success = await this.saveToR2(r2Key, analysis);
+    if (!r2Success) {
+      console.warn(
+        `R2 archive failed for analysis of repo ${analysis.repo_id}. D1 record saved successfully. Key: ${r2Key}`,
+      );
+    }
   }
 
   async getLatestAnalysis(repoId: string): Promise<Analysis | null> {
@@ -443,6 +463,20 @@ export class StorageService extends BaseService {
   }
 
   /**
+   * Get repos that exist in repositories but have no repo_tiers row
+   */
+  async getReposWithoutTiers(): Promise<
+    Array<{ id: string; stars: number; created_at: string }>
+  > {
+    return this.dbAll<{ id: string; stars: number; created_at: string }>(
+      `SELECT r.id, r.stars, r.created_at FROM repositories r
+       LEFT JOIN repo_tiers rt ON r.id = rt.repo_id
+       WHERE rt.repo_id IS NULL AND r.is_archived = 0 AND r.is_fork = 0
+       LIMIT 200`,
+    );
+  }
+
+  /**
    * Get repository count
    */
   async getRepositoryCount(): Promise<number> {
@@ -585,29 +619,59 @@ export class StorageService extends BaseService {
       cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
       const cutoffDateStr = cutoffDate.toISOString();
 
-      // Clean up old metrics
-      await this.dbRun(
-        `DELETE FROM repo_metrics WHERE recorded_at < ?`,
-        cutoffDateStr,
-      );
+      // Date-based cleanup for time-series data.
+      // Each wrapped independently so a missing table doesn't block others.
+      const dateCleanups = [
+        { table: "repo_metrics", column: "recorded_at" },
+        { table: "alerts", column: "sent_at" },
+        { table: "commit_metrics", column: "recorded_at" },
+        { table: "star_history", column: "recorded_at" },
+      ];
+      for (const { table, column } of dateCleanups) {
+        try {
+          await this.dbRun(
+            `DELETE FROM ${table} WHERE ${column} < ?`,
+            cutoffDateStr,
+          );
+        } catch {
+          // Table may not exist in this deployment; skip it
+        }
+      }
 
-      // Clean up old alerts
-      await this.dbRun(`DELETE FROM alerts WHERE sent_at < ?`, cutoffDateStr);
-
-      // Clean up orphaned contributors
-      await this.dbRun(`
-        DELETE FROM contributors 
-        WHERE repo_id NOT IN (SELECT id FROM repositories)
-      `);
+      // Orphan cleanup: remove records referencing deleted repositories.
+      // Each table is cleaned independently so a missing table doesn't block others.
+      const orphanTables = [
+        "contributors",
+        "analyses",
+        "repo_metrics",
+        "commit_metrics",
+        "release_history",
+        "pr_metrics",
+        "issue_metrics",
+        "star_history",
+        "fork_analysis",
+        "repo_tiers",
+      ];
+      for (const table of orphanTables) {
+        try {
+          await this.dbRun(
+            `DELETE FROM ${table} WHERE repo_id NOT IN (SELECT id FROM repositories)`,
+          );
+        } catch {
+          // Table may not exist in this deployment; skip it
+        }
+      }
     });
   }
 
   // R2 operations
-  private async saveToR2(key: string, data: any): Promise<void> {
+  private async saveToR2(key: string, data: any): Promise<boolean> {
     try {
       await this.env.STORAGE.put(key, JSON.stringify(data));
+      return true;
     } catch (error) {
-      console.error("R2 save error:", error);
+      console.error(`R2 save failed for key "${key}":`, error);
+      return false;
     }
   }
 

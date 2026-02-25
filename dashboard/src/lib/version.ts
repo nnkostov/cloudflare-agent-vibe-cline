@@ -4,7 +4,7 @@
 
 // Get version from package.json at build time
 // This will be replaced by Vite during build process
-export const APP_VERSION = (import.meta as any).env?.VITE_APP_VERSION || '1.0.0';
+export const APP_VERSION = (import.meta as any).env?.VITE_APP_VERSION || '1.0';
 
 // Build timestamp (will be injected at build time)
 export const BUILD_TIMESTAMP = (import.meta as any).env?.VITE_BUILD_TIMESTAMP || new Date().toISOString();

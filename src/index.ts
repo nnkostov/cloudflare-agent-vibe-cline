@@ -11,6 +11,23 @@ export default {
     const service = new WorkerService(env);
     return service.handleRequest(request);
   },
+  async scheduled(
+    event: ScheduledEvent,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    console.log(`[Cron] Triggered: ${event.cron} at ${new Date().toISOString()}`);
+    const id = env.GITHUB_AGENT.idFromName("main");
+    const agent = env.GITHUB_AGENT.get(id);
+    const response = await agent.fetch(
+      new Request("http://internal/scheduled", { method: "POST" }),
+    );
+    if (!response.ok) {
+      console.error("[Cron] Scheduled scan failed:", await response.text());
+    } else {
+      console.log("[Cron] Scheduled scan completed successfully");
+    }
+  },
 };
 
 // @ts-ignore
@@ -1110,18 +1127,18 @@ class WorkerService extends BaseService {
       // Build SQL query to find repositories needing analysis based on tier thresholds
       let tierConditions = [];
       if (force) {
-        // Force mode: shorter thresholds
+        // Force mode: tighter thresholds (1/3/5 days)
         tierConditions = [
-          `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`, // 3 days for Tier 1
-          `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`, // 5 days for Tier 2
-          `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`, // 7 days for Tier 3
+          `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-24 hours')))`,
+          `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
+          `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
         ];
       } else {
-        // Normal mode: longer thresholds
+        // Normal mode: standard thresholds (3/5/7 days)
         tierConditions = [
-          `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`, // 7 days for Tier 1
-          `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-240 hours')))`, // 10 days for Tier 2
-          `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-336 hours')))`, // 14 days for Tier 3
+          `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
+          `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
+          `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
         ];
       }
 

@@ -21,25 +21,24 @@ export class StorageEnhancedService extends BaseService {
   async saveCommitMetrics(metrics: CommitMetrics[]): Promise<void> {
     if (metrics.length === 0) return;
 
-    try {
-      const values = metrics
-        .map(
-          (m) =>
-            `('${m.repo_id}', '${m.date}', ${m.commit_count}, ${m.unique_authors}, ${m.additions}, ${m.deletions})`,
-        )
-        .join(", ");
+    const stmt = this.env.DB.prepare(`
+      INSERT OR REPLACE INTO commit_metrics
+      (repo_id, date, commit_count, unique_authors, additions, deletions)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
 
-      await this.env.DB.prepare(
-        `
-        INSERT OR REPLACE INTO commit_metrics 
-        (repo_id, date, commit_count, unique_authors, additions, deletions)
-        VALUES ${values}
-      `,
-      ).run();
-    } catch (error) {
-      console.error("Error in saveCommitMetrics:", error);
-      throw error;
-    }
+    await this.dbBatch(
+      metrics.map((m) =>
+        stmt.bind(
+          m.repo_id,
+          m.date,
+          m.commit_count,
+          m.unique_authors,
+          m.additions,
+          m.deletions,
+        ),
+      ),
+    );
   }
 
   /**
@@ -49,25 +48,16 @@ export class StorageEnhancedService extends BaseService {
     repoId: string,
     days: number = 30,
   ): Promise<CommitMetrics[]> {
-    try {
-      const since = new Date();
-      since.setDate(since.getDate() - days);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
 
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM commit_metrics 
-        WHERE repo_id = ? AND date >= ?
-        ORDER BY date DESC
-      `,
-      )
-        .bind(repoId, since.toISOString().split("T")[0])
-        .all();
-
-      return result.results as unknown as CommitMetrics[];
-    } catch (error) {
-      console.error("Error in getCommitMetrics:", error);
-      return [];
-    }
+    return this.dbAll<CommitMetrics>(
+      `SELECT * FROM commit_metrics
+       WHERE repo_id = ? AND date >= ?
+       ORDER BY date DESC`,
+      repoId,
+      since.toISOString().split("T")[0],
+    );
   }
 
   /**
@@ -76,88 +66,65 @@ export class StorageEnhancedService extends BaseService {
   async saveReleaseMetrics(metrics: ReleaseMetrics[]): Promise<void> {
     if (metrics.length === 0) return;
 
-    try {
-      for (const m of metrics) {
-        await this.env.DB.prepare(
-          `
-          INSERT OR REPLACE INTO release_history 
-          (repo_id, release_id, tag_name, name, published_at, is_prerelease, is_draft, download_count, body)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        )
-          .bind(
-            m.repo_id,
-            m.release_id,
-            m.tag_name,
-            m.name,
-            m.published_at,
-            m.is_prerelease ? 1 : 0,
-            m.is_draft ? 1 : 0,
-            m.download_count,
-            m.body,
-          )
-          .run();
-      }
-    } catch (error) {
-      console.error("Error in saveReleaseMetrics:", error);
-      throw error;
-    }
+    const stmt = this.env.DB.prepare(`
+      INSERT OR REPLACE INTO release_history
+      (repo_id, release_id, tag_name, name, published_at, is_prerelease, is_draft, download_count, body)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    await this.dbBatch(
+      metrics.map((m) =>
+        stmt.bind(
+          m.repo_id,
+          m.release_id,
+          m.tag_name,
+          m.name,
+          m.published_at,
+          m.is_prerelease ? 1 : 0,
+          m.is_draft ? 1 : 0,
+          m.download_count,
+          m.body,
+        ),
+      ),
+    );
   }
 
   /**
    * Get release metrics for a repository
    */
   async getReleaseMetrics(repoId: string): Promise<ReleaseMetrics[]> {
-    try {
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM release_history 
-        WHERE repo_id = ?
-        ORDER BY published_at DESC
-      `,
-      )
-        .bind(repoId)
-        .all();
+    const results = await this.dbAll<any>(
+      `SELECT * FROM release_history
+       WHERE repo_id = ?
+       ORDER BY published_at DESC`,
+      repoId,
+    );
 
-      return result.results.map((r: any) => ({
-        ...r,
-        is_prerelease: r.is_prerelease === 1,
-        is_draft: r.is_draft === 1,
-      })) as unknown as ReleaseMetrics[];
-    } catch (error) {
-      console.error("Error in getReleaseMetrics:", error);
-      return [];
-    }
+    return results.map((r) => ({
+      ...r,
+      is_prerelease: r.is_prerelease === 1,
+      is_draft: r.is_draft === 1,
+    })) as ReleaseMetrics[];
   }
 
   /**
    * Save pull request metrics
    */
   async savePullRequestMetrics(metrics: PullRequestMetrics): Promise<void> {
-    try {
-      await this.env.DB.prepare(
-        `
-        INSERT OR REPLACE INTO pr_metrics 
-        (repo_id, period_start, period_end, total_prs, merged_prs, 
-         avg_time_to_merge_hours, unique_contributors, avg_review_comments)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      )
-        .bind(
-          metrics.repo_id,
-          metrics.period_start,
-          metrics.period_end,
-          metrics.total_prs,
-          metrics.merged_prs,
-          metrics.avg_time_to_merge_hours,
-          metrics.unique_contributors,
-          metrics.avg_review_comments,
-        )
-        .run();
-    } catch (error) {
-      console.error("Error in savePullRequestMetrics:", error);
-      throw error;
-    }
+    await this.dbRun(
+      `INSERT OR REPLACE INTO pr_metrics
+       (repo_id, period_start, period_end, total_prs, merged_prs,
+        avg_time_to_merge_hours, unique_contributors, avg_review_comments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      metrics.repo_id,
+      metrics.period_start,
+      metrics.period_end,
+      metrics.total_prs,
+      metrics.merged_prs,
+      metrics.avg_time_to_merge_hours,
+      metrics.unique_contributors,
+      metrics.avg_review_comments,
+    );
   }
 
   /**
@@ -166,78 +133,48 @@ export class StorageEnhancedService extends BaseService {
   async getLatestPullRequestMetrics(
     repoId: string,
   ): Promise<PullRequestMetrics | null> {
-    try {
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM pr_metrics 
-        WHERE repo_id = ?
-        ORDER BY period_end DESC
-        LIMIT 1
-      `,
-      )
-        .bind(repoId)
-        .first();
-
-      return result as unknown as PullRequestMetrics | null;
-    } catch (error) {
-      console.error("Error in getLatestPullRequestMetrics:", error);
-      return null;
-    }
+    return this.dbFirst<PullRequestMetrics>(
+      `SELECT * FROM pr_metrics
+       WHERE repo_id = ?
+       ORDER BY period_end DESC
+       LIMIT 1`,
+      repoId,
+    );
   }
 
   /**
    * Save issue metrics
    */
   async saveIssueMetrics(metrics: IssueMetrics): Promise<void> {
-    try {
-      await this.env.DB.prepare(
-        `
-        INSERT OR REPLACE INTO issue_metrics 
-        (repo_id, period_start, period_end, total_issues, closed_issues,
-         avg_time_to_close_hours, avg_time_to_first_response_hours, 
-         bug_issues, feature_issues)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      )
-        .bind(
-          metrics.repo_id,
-          metrics.period_start,
-          metrics.period_end,
-          metrics.total_issues,
-          metrics.closed_issues,
-          metrics.avg_time_to_close_hours,
-          metrics.avg_time_to_first_response_hours,
-          metrics.bug_issues,
-          metrics.feature_issues,
-        )
-        .run();
-    } catch (error) {
-      console.error("Error in saveIssueMetrics:", error);
-      throw error;
-    }
+    await this.dbRun(
+      `INSERT OR REPLACE INTO issue_metrics
+       (repo_id, period_start, period_end, total_issues, closed_issues,
+        avg_time_to_close_hours, avg_time_to_first_response_hours,
+        bug_issues, feature_issues)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      metrics.repo_id,
+      metrics.period_start,
+      metrics.period_end,
+      metrics.total_issues,
+      metrics.closed_issues,
+      metrics.avg_time_to_close_hours,
+      metrics.avg_time_to_first_response_hours,
+      metrics.bug_issues,
+      metrics.feature_issues,
+    );
   }
 
   /**
    * Get latest issue metrics
    */
   async getLatestIssueMetrics(repoId: string): Promise<IssueMetrics | null> {
-    try {
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM issue_metrics 
-        WHERE repo_id = ?
-        ORDER BY period_end DESC
-        LIMIT 1
-      `,
-      )
-        .bind(repoId)
-        .first();
-
-      return result as unknown as IssueMetrics | null;
-    } catch (error) {
-      console.error("Error in getLatestIssueMetrics:", error);
-      return null;
-    }
+    return this.dbFirst<IssueMetrics>(
+      `SELECT * FROM issue_metrics
+       WHERE repo_id = ?
+       ORDER BY period_end DESC
+       LIMIT 1`,
+      repoId,
+    );
   }
 
   /**
@@ -246,28 +183,23 @@ export class StorageEnhancedService extends BaseService {
   async saveStarHistory(history: StarHistory[]): Promise<void> {
     if (history.length === 0) return;
 
-    try {
-      for (const h of history) {
-        await this.env.DB.prepare(
-          `
-          INSERT OR REPLACE INTO star_history 
-          (repo_id, date, star_count, daily_growth, weekly_growth_rate)
-          VALUES (?, ?, ?, ?, ?)
-        `,
-        )
-          .bind(
-            h.repo_id,
-            h.date,
-            h.star_count,
-            h.daily_growth,
-            h.weekly_growth_rate,
-          )
-          .run();
-      }
-    } catch (error) {
-      console.error("Error in saveStarHistory:", error);
-      throw error;
-    }
+    const stmt = this.env.DB.prepare(`
+      INSERT OR REPLACE INTO star_history
+      (repo_id, date, star_count, daily_growth, weekly_growth_rate)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    await this.dbBatch(
+      history.map((h) =>
+        stmt.bind(
+          h.repo_id,
+          h.date,
+          h.star_count,
+          h.daily_growth,
+          h.weekly_growth_rate,
+        ),
+      ),
+    );
   }
 
   /**
@@ -277,108 +209,71 @@ export class StorageEnhancedService extends BaseService {
     repoId: string,
     days: number = 30,
   ): Promise<StarHistory[]> {
-    try {
-      const since = new Date();
-      since.setDate(since.getDate() - days);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
 
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM star_history 
-        WHERE repo_id = ? AND date >= ?
-        ORDER BY date DESC
-      `,
-      )
-        .bind(repoId, since.toISOString().split("T")[0])
-        .all();
-
-      return result.results as unknown as StarHistory[];
-    } catch (error) {
-      console.error("Error in getStarHistory:", error);
-      return [];
-    }
+    return this.dbAll<StarHistory>(
+      `SELECT * FROM star_history
+       WHERE repo_id = ? AND date >= ?
+       ORDER BY date DESC`,
+      repoId,
+      since.toISOString().split("T")[0],
+    );
   }
 
   /**
    * Save fork analysis
    */
   async saveForkAnalysis(analysis: ForkAnalysis): Promise<void> {
-    try {
-      await this.env.DB.prepare(
-        `
-        INSERT OR REPLACE INTO fork_analysis 
-        (repo_id, analysis_date, total_forks, active_forks, forks_ahead,
-         forks_with_stars, avg_fork_stars)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-      )
-        .bind(
-          analysis.repo_id,
-          analysis.analysis_date,
-          analysis.total_forks,
-          analysis.active_forks,
-          analysis.forks_ahead,
-          analysis.forks_with_stars,
-          analysis.avg_fork_stars,
-        )
-        .run();
-    } catch (error) {
-      console.error("Error in saveForkAnalysis:", error);
-      throw error;
-    }
+    await this.dbRun(
+      `INSERT OR REPLACE INTO fork_analysis
+       (repo_id, analysis_date, total_forks, active_forks, forks_ahead,
+        forks_with_stars, avg_fork_stars)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      analysis.repo_id,
+      analysis.analysis_date,
+      analysis.total_forks,
+      analysis.active_forks,
+      analysis.forks_ahead,
+      analysis.forks_with_stars,
+      analysis.avg_fork_stars,
+    );
   }
 
   /**
    * Get latest fork analysis
    */
   async getLatestForkAnalysis(repoId: string): Promise<ForkAnalysis | null> {
-    try {
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM fork_analysis 
-        WHERE repo_id = ?
-        ORDER BY analysis_date DESC
-        LIMIT 1
-      `,
-      )
-        .bind(repoId)
-        .first();
-
-      return result as unknown as ForkAnalysis | null;
-    } catch (error) {
-      console.error("Error in getLatestForkAnalysis:", error);
-      return null;
-    }
+    return this.dbFirst<ForkAnalysis>(
+      `SELECT * FROM fork_analysis
+       WHERE repo_id = ?
+       ORDER BY analysis_date DESC
+       LIMIT 1`,
+      repoId,
+    );
   }
 
   /**
-   * Save or update repository tier
+   * Save or update repository tier.
+   * Note: stars is denormalized from repositories.stars for query performance.
+   * Always call this after updating the repository to keep in sync.
    */
   async saveRepoTier(tier: RepoTier): Promise<void> {
-    try {
-      await this.env.DB.prepare(
-        `
-        INSERT OR REPLACE INTO repo_tiers 
-        (repo_id, tier, stars, last_deep_scan, last_basic_scan, 
-         growth_velocity, engagement_score, scan_priority, next_scan_due, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `,
-      )
-        .bind(
-          tier.repo_id,
-          tier.tier,
-          tier.stars,
-          tier.last_deep_scan,
-          tier.last_basic_scan,
-          tier.growth_velocity,
-          tier.engagement_score,
-          tier.scan_priority,
-          tier.next_scan_due,
-        )
-        .run();
-    } catch (error) {
-      console.error("Error in saveRepoTier:", error);
-      throw error;
-    }
+    await this.dbRun(
+      `INSERT OR REPLACE INTO repo_tiers
+       (repo_id, tier, stars, last_deep_scan, last_basic_scan,
+        growth_velocity, engagement_score, scan_priority, next_scan_due, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      tier.repo_id,
+      tier.tier,
+      tier.stars,
+      tier.last_deep_scan,
+      tier.last_basic_scan,
+      tier.growth_velocity,
+      tier.engagement_score,
+      tier.scan_priority,
+      tier.next_scan_due,
+    );
   }
 
   /**
@@ -388,44 +283,24 @@ export class StorageEnhancedService extends BaseService {
     tier: 1 | 2 | 3,
     limit: number = 100,
   ): Promise<RepoTier[]> {
-    try {
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM repo_tiers 
-        WHERE tier = ?
-        ORDER BY scan_priority DESC, growth_velocity DESC
-        LIMIT ?
-      `,
-      )
-        .bind(tier, limit)
-        .all();
-
-      return result.results as unknown as RepoTier[];
-    } catch (error) {
-      console.error("Error in getReposByTier:", error);
-      return [];
-    }
+    return this.dbAll<RepoTier>(
+      `SELECT * FROM repo_tiers
+       WHERE tier = ?
+       ORDER BY scan_priority DESC, growth_velocity DESC
+       LIMIT ?`,
+      tier,
+      limit,
+    );
   }
 
   /**
    * Get repository tier info
    */
   async getRepoTier(repoId: string): Promise<RepoTier | null> {
-    try {
-      const result = await this.env.DB.prepare(
-        `
-        SELECT * FROM repo_tiers 
-        WHERE repo_id = ?
-      `,
-      )
-        .bind(repoId)
-        .first();
-
-      return result as unknown as RepoTier | null;
-    } catch (error) {
-      console.error("Error in getRepoTier:", error);
-      return null;
-    }
+    return this.dbFirst<RepoTier>(
+      `SELECT * FROM repo_tiers WHERE repo_id = ?`,
+      repoId,
+    );
   }
 
   /**
@@ -439,64 +314,49 @@ export class StorageEnhancedService extends BaseService {
       engagement_score: number;
     },
   ): Promise<void> {
-    try {
-      // Determine tier based on metrics - PROPER LOGIC for balanced distribution
-      let tier: 1 | 2 | 3;
+    // Determine tier based on metrics - PROPER LOGIC for balanced distribution
+    let tier: 1 | 2 | 3;
 
-      // Tier 1: Top 15% of repositories (elite performers)
-      // High star count OR exceptional growth velocity
-      if (
-        metrics.stars >= 50000 ||
-        (metrics.stars >= 20000 && metrics.growth_velocity > 10)
-      ) {
-        tier = 1;
-      }
-      // Tier 2: Next 20-25% of repositories (solid performers)
-      // Good star count OR moderate growth velocity
-      else if (
-        metrics.stars >= 15000 ||
-        (metrics.stars >= 5000 && metrics.growth_velocity > 5)
-      ) {
-        tier = 2;
-      }
-      // Tier 3: Remaining 60-70% of repositories (ALL other AI/ML repos)
-      // This ensures ALL discovered AI/ML repositories get a tier assignment
-      else {
-        tier = 3;
-      }
-
-      // Calculate scan priority
-      const scanPriority = Math.round(
-        metrics.growth_velocity * 0.5 +
-          metrics.engagement_score * 0.3 +
-          Math.log10(metrics.stars + 1) * 0.2,
-      );
-
-      // Calculate next scan due based on tier
-      const hoursUntilNextScan = {
-        1: 1, // Tier 1: scan every hour
-        2: 24, // Tier 2: scan every 24 hours
-        3: 168, // Tier 3: scan every week
-      };
-
-      const nextScanDue = new Date();
-      nextScanDue.setHours(nextScanDue.getHours() + hoursUntilNextScan[tier]);
-
-      await this.saveRepoTier({
-        repo_id: repoId,
-        tier,
-        stars: metrics.stars,
-        last_deep_scan: null,
-        last_basic_scan: null,
-        growth_velocity: metrics.growth_velocity,
-        engagement_score: metrics.engagement_score,
-        scan_priority: scanPriority,
-        next_scan_due: nextScanDue.toISOString(),
-      });
-    } catch (error) {
-      console.error("Error in updateRepoTier:", error);
-      throw error;
+    // Tier 1: Top 15% of repositories (elite performers)
+    if (
+      metrics.stars >= 50000 ||
+      (metrics.stars >= 20000 && metrics.growth_velocity > 10)
+    ) {
+      tier = 1;
     }
+    // Tier 2: Next 20-25% of repositories (solid performers)
+    else if (
+      metrics.stars >= 15000 ||
+      (metrics.stars >= 5000 && metrics.growth_velocity > 5)
+    ) {
+      tier = 2;
+    }
+    // Tier 3: Remaining 60-70% of repositories
+    else {
+      tier = 3;
+    }
+
+    const scanPriority = Math.round(
+      metrics.growth_velocity * 0.5 +
+        metrics.engagement_score * 0.3 +
+        Math.log10(metrics.stars + 1) * 0.2,
+    );
+
+    const hoursUntilNextScan = { 1: 1, 2: 24, 3: 168 } as const;
+    const nextScanDue = new Date();
+    nextScanDue.setHours(nextScanDue.getHours() + hoursUntilNextScan[tier]);
+
+    await this.saveRepoTier({
+      repo_id: repoId,
+      tier,
+      stars: metrics.stars,
+      last_deep_scan: null,
+      last_basic_scan: null,
+      growth_velocity: metrics.growth_velocity,
+      engagement_score: metrics.engagement_score,
+      scan_priority: scanPriority,
+      next_scan_due: nextScanDue.toISOString(),
+    });
   }
 
   /**
@@ -507,51 +367,39 @@ export class StorageEnhancedService extends BaseService {
     scanType: "deep" | "basic",
     force: boolean = false,
   ): Promise<string[]> {
-    try {
-      if (force) {
-        // When forced, return all repos of this tier
-        const result = await this.env.DB.prepare(
-          `
-          SELECT repo_id FROM repo_tiers 
-          WHERE tier = ?
-          ORDER BY scan_priority DESC, stars DESC
-          LIMIT 100
-        `,
-        )
-          .bind(tier)
-          .all();
-
-        return result.results.map((r: any) => r.repo_id);
-      }
-
-      const hoursMap = {
-        1: { deep: 6, basic: 3 },
-        2: { deep: 24, basic: 12 },
-        3: { deep: 168, basic: 48 },
-      };
-
-      const hours = hoursMap[tier][scanType];
-      const cutoff = new Date();
-      cutoff.setHours(cutoff.getHours() - hours);
-
-      const column = scanType === "deep" ? "last_deep_scan" : "last_basic_scan";
-
-      const result = await this.env.DB.prepare(
-        `
-        SELECT repo_id FROM repo_tiers 
-        WHERE tier = ? AND (${column} IS NULL OR ${column} < ?)
-        ORDER BY scan_priority DESC
-        LIMIT 50
-      `,
-      )
-        .bind(tier, cutoff.toISOString())
-        .all();
-
-      return result.results.map((r: any) => r.repo_id);
-    } catch (error) {
-      console.error("Error in getReposNeedingScan:", error);
-      return [];
+    if (force) {
+      const results = await this.dbAll<{ repo_id: string }>(
+        `SELECT repo_id FROM repo_tiers
+         WHERE tier = ?
+         ORDER BY scan_priority DESC, stars DESC
+         LIMIT 100`,
+        tier,
+      );
+      return results.map((r) => r.repo_id);
     }
+
+    const hoursMap = {
+      1: { deep: 6, basic: 3 },
+      2: { deep: 24, basic: 12 },
+      3: { deep: 168, basic: 48 },
+    } as const;
+
+    const hours = hoursMap[tier][scanType];
+    const cutoff = new Date();
+    cutoff.setHours(cutoff.getHours() - hours);
+
+    // Column name is from a controlled union type, not user input
+    const column = scanType === "deep" ? "last_deep_scan" : "last_basic_scan";
+
+    const results = await this.dbAll<{ repo_id: string }>(
+      `SELECT repo_id FROM repo_tiers
+       WHERE tier = ? AND (${column} IS NULL OR ${column} < ?)
+       ORDER BY scan_priority DESC
+       LIMIT 50`,
+      tier,
+      cutoff.toISOString(),
+    );
+    return results.map((r) => r.repo_id);
   }
 
   /**
@@ -561,22 +409,15 @@ export class StorageEnhancedService extends BaseService {
     repoId: string,
     scanType: "deep" | "basic",
   ): Promise<void> {
-    try {
-      const column = scanType === "deep" ? "last_deep_scan" : "last_basic_scan";
+    // Column name is from a controlled union type, not user input
+    const column = scanType === "deep" ? "last_deep_scan" : "last_basic_scan";
 
-      await this.env.DB.prepare(
-        `
-        UPDATE repo_tiers 
-        SET ${column} = CURRENT_TIMESTAMP
-        WHERE repo_id = ?
-      `,
-      )
-        .bind(repoId)
-        .run();
-    } catch (error) {
-      console.error("Error in markRepoScanned:", error);
-      throw error;
-    }
+    await this.dbRun(
+      `UPDATE repo_tiers
+       SET ${column} = CURRENT_TIMESTAMP
+       WHERE repo_id = ?`,
+      repoId,
+    );
   }
 
   /**
@@ -611,5 +452,35 @@ export class StorageEnhancedService extends BaseService {
       forks,
       tier,
     };
+  }
+
+  /**
+   * Get the latest recorded_at timestamp per enhanced metric type for a repo.
+   * Returns a map like { commits: "2024-...", releases: null, ... }.
+   * Used to decide which metrics need re-fetching from GitHub.
+   */
+  async getMetricsFreshness(
+    repoId: string,
+  ): Promise<Record<string, string | null>> {
+    const rows = await this.dbAll<{
+      metric_type: string;
+      latest: string | null;
+    }>(
+      `SELECT 'commits' as metric_type, MAX(recorded_at) as latest FROM commit_metrics WHERE repo_id = ?
+       UNION ALL SELECT 'releases', MAX(recorded_at) FROM release_history WHERE repo_id = ?
+       UNION ALL SELECT 'prs', MAX(recorded_at) FROM pr_metrics WHERE repo_id = ?
+       UNION ALL SELECT 'issues', MAX(recorded_at) FROM issue_metrics WHERE repo_id = ?
+       UNION ALL SELECT 'stars', MAX(recorded_at) FROM star_history WHERE repo_id = ?
+       UNION ALL SELECT 'forks', MAX(recorded_at) FROM fork_analysis WHERE repo_id = ?`,
+      repoId,
+      repoId,
+      repoId,
+      repoId,
+      repoId,
+      repoId,
+    );
+    const map: Record<string, string | null> = {};
+    for (const row of rows) map[row.metric_type] = row.latest;
+    return map;
   }
 }

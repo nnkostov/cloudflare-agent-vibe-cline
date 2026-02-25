@@ -93,22 +93,4 @@ export class BaseService {
     );
   }
 
-  /**
-   * Execute a transaction with automatic rollback on error
-   */
-  protected async dbTransaction<T>(
-    fn: (tx: D1Database) => Promise<T>,
-  ): Promise<T> {
-    return this.handleError(async () => {
-      // D1 doesn't have explicit transaction support yet,
-      // but we can simulate it with careful error handling
-      try {
-        return await fn(this.env.DB);
-      } catch (error) {
-        // In a real transaction, we would rollback here
-        console.error("Transaction failed:", error);
-        throw error;
-      }
-    }, "database transaction");
-  }
 }

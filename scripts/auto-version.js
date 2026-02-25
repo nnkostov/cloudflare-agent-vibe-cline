@@ -5,14 +5,13 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 /**
- * Automatic Versioning System
- * Analyzes git commits since last version and automatically bumps version
+ * Automatic Versioning System (Two-Part: MAJOR.MINOR)
+ * Each deploy bumps MINOR. MAJOR reserved for breaking changes.
  */
 
 // Version bump types
 const VERSION_TYPES = {
-  PATCH: 'patch',
-  MINOR: 'minor', 
+  MINOR: 'minor',
   MAJOR: 'major'
 };
 
@@ -22,25 +21,6 @@ const COMMIT_PATTERNS = {
     /BREAKING[\s\S]*CHANGE/i,
     /^breaking[\s\S]*:/i,
     /^major[\s\S]*:/i
-  ],
-  [VERSION_TYPES.MINOR]: [
-    /^feat[\s\S]*:/i,
-    /^feature[\s\S]*:/i,
-    /^add[\s\S]*:/i,
-    /^enhance[\s\S]*:/i,
-    /^improve[\s\S]*:/i,
-    /^new[\s\S]*:/i
-  ],
-  [VERSION_TYPES.PATCH]: [
-    /^fix[\s\S]*:/i,
-    /^bug[\s\S]*:/i,
-    /^patch[\s\S]*:/i,
-    /^hotfix[\s\S]*:/i,
-    /^docs[\s\S]*:/i,
-    /^style[\s\S]*:/i,
-    /^refactor[\s\S]*:/i,
-    /^test[\s\S]*:/i,
-    /^chore[\s\S]*:/i
   ]
 };
 
@@ -58,7 +38,7 @@ class AutoVersioner {
       const packageJson = JSON.parse(fs.readFileSync(this.rootPackagePath, 'utf8'));
       return packageJson.version;
     } catch (error) {
-      console.error('❌ Error reading package.json:', error.message);
+      console.error('Error reading package.json:', error.message);
       process.exit(1);
     }
   }
@@ -74,12 +54,12 @@ class AutoVersioner {
         lastTag = execSync('git describe --tags --abbrev=0 --match="v*"', { encoding: 'utf8' }).trim();
       } catch (error) {
         // No tags found, get all commits
-        console.log('📝 No previous version tags found, analyzing all commits');
+        console.log('No previous version tags found, analyzing all commits');
         lastTag = null;
       }
 
       // Get commits since last tag (or all commits if no tag)
-      const gitCommand = lastTag 
+      const gitCommand = lastTag
         ? `git log ${lastTag}..HEAD --oneline --no-merges`
         : 'git log --oneline --no-merges -10'; // Last 10 commits if no tags
 
@@ -88,10 +68,10 @@ class AutoVersioner {
         .split('\n')
         .filter(line => line.length > 0);
 
-      console.log(`📊 Found ${commits.length} commits since ${lastTag || 'beginning'}`);
-      
+      console.log(`Found ${commits.length} commits since ${lastTag || 'beginning'}`);
+
       if (commits.length > 0) {
-        console.log('📝 Recent commits:');
+        console.log('Recent commits:');
         commits.slice(0, 5).forEach(commit => {
           console.log(`   ${commit}`);
         });
@@ -102,7 +82,7 @@ class AutoVersioner {
 
       return commits;
     } catch (error) {
-      console.error('❌ Error getting git commits:', error.message);
+      console.error('Error getting git commits:', error.message);
       return [];
     }
   }
@@ -111,71 +91,39 @@ class AutoVersioner {
    * Analyze commits to determine version bump type
    */
   analyzeCommits(commits) {
-    if (commits.length === 0) {
-      console.log('📝 No commits found, defaulting to patch version');
-      return VERSION_TYPES.PATCH;
-    }
+    let hasMajor = false;
+    const majorCommits = [];
 
-    let detectedType = VERSION_TYPES.PATCH; // Default to patch
-    const detectedCommits = {
-      [VERSION_TYPES.MAJOR]: [],
-      [VERSION_TYPES.MINOR]: [],
-      [VERSION_TYPES.PATCH]: []
-    };
-
-    // Analyze each commit
     commits.forEach(commit => {
-      // Check for major changes first (highest priority)
       if (COMMIT_PATTERNS[VERSION_TYPES.MAJOR].some(pattern => pattern.test(commit))) {
-        detectedType = VERSION_TYPES.MAJOR;
-        detectedCommits[VERSION_TYPES.MAJOR].push(commit);
-        return;
-      }
-
-      // Check for minor changes
-      if (COMMIT_PATTERNS[VERSION_TYPES.MINOR].some(pattern => pattern.test(commit))) {
-        if (detectedType !== VERSION_TYPES.MAJOR) {
-          detectedType = VERSION_TYPES.MINOR;
-        }
-        detectedCommits[VERSION_TYPES.MINOR].push(commit);
-        return;
-      }
-
-      // Check for patch changes
-      if (COMMIT_PATTERNS[VERSION_TYPES.PATCH].some(pattern => pattern.test(commit))) {
-        detectedCommits[VERSION_TYPES.PATCH].push(commit);
-        return;
-      }
-
-      // No pattern matched, treat as patch
-      detectedCommits[VERSION_TYPES.PATCH].push(commit);
-    });
-
-    // Log analysis results
-    console.log('\n🔍 Commit Analysis Results:');
-    Object.entries(detectedCommits).forEach(([type, commits]) => {
-      if (commits.length > 0) {
-        console.log(`   ${type.toUpperCase()}: ${commits.length} commits`);
+        hasMajor = true;
+        majorCommits.push(commit);
       }
     });
 
-    console.log(`\n🎯 Determined version bump: ${detectedType.toUpperCase()}`);
-    return detectedType;
+    const bumpType = hasMajor ? VERSION_TYPES.MAJOR : VERSION_TYPES.MINOR;
+
+    if (majorCommits.length > 0) {
+      console.log(`\nBreaking changes detected: ${majorCommits.length} commits`);
+    }
+    console.log(`Version bump: ${bumpType.toUpperCase()}`);
+
+    return bumpType;
   }
 
   /**
-   * Bump version based on type
+   * Bump version based on type (two-part: MAJOR.MINOR)
    */
   bumpVersion(currentVersion, bumpType) {
-    const [major, minor, patch] = currentVersion.split('.').map(Number);
+    const parts = currentVersion.split('.').map(Number);
+    const major = parts[0] || 1;
+    const minor = parts[1] || 0;
 
     switch (bumpType) {
       case VERSION_TYPES.MAJOR:
-        return `${major + 1}.0.0`;
+        return `${major + 1}.0`;
       case VERSION_TYPES.MINOR:
-        return `${major}.${minor + 1}.0`;
-      case VERSION_TYPES.PATCH:
-        return `${major}.${minor}.${patch + 1}`;
+        return `${major}.${minor + 1}`;
       default:
         throw new Error(`Unknown bump type: ${bumpType}`);
     }
@@ -189,9 +137,9 @@ class AutoVersioner {
       const packageJson = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       packageJson.version = newVersion;
       fs.writeFileSync(filePath, JSON.stringify(packageJson, null, 2) + '\n');
-      console.log(`✅ Updated ${path.relative(process.cwd(), filePath)} to v${newVersion}`);
+      console.log(`Updated ${path.relative(process.cwd(), filePath)} to v${newVersion}`);
     } catch (error) {
-      console.error(`❌ Error updating ${filePath}:`, error.message);
+      console.error(`Error updating ${filePath}:`, error.message);
       throw error;
     }
   }
@@ -205,9 +153,9 @@ class AutoVersioner {
       execSync(`git add package.json dashboard/package.json`);
       execSync(`git commit -m "chore: bump version to ${version}"`);
       execSync(`git tag -a ${tagName} -m "Release ${tagName}"`);
-      console.log(`🏷️  Created git tag: ${tagName}`);
+      console.log(`Created git tag: ${tagName}`);
     } catch (error) {
-      console.error('❌ Error creating git tag:', error.message);
+      console.error('Error creating git tag:', error.message);
       // Don't fail the process for git tag errors
     }
   }
@@ -216,11 +164,11 @@ class AutoVersioner {
    * Main versioning process
    */
   async run() {
-    console.log('🚀 Starting automatic versioning...\n');
+    console.log('Starting automatic versioning...\n');
 
     // Get current version
     const currentVersion = this.getCurrentVersion();
-    console.log(`📦 Current version: v${currentVersion}`);
+    console.log(`Current version: v${currentVersion}`);
 
     // Get commits since last version
     const commits = this.getCommitsSinceLastVersion();
@@ -231,19 +179,19 @@ class AutoVersioner {
     // Calculate new version
     const newVersion = this.bumpVersion(currentVersion, bumpType);
 
-    console.log(`\n🎯 Version bump: v${currentVersion} → v${newVersion} (${bumpType})`);
+    console.log(`\nv${currentVersion} -> v${newVersion} (${bumpType})`);
 
     // Update package.json files
-    console.log('\n📝 Updating package.json files...');
+    console.log('\nUpdating package.json files...');
     this.updatePackageJson(this.rootPackagePath, newVersion);
     this.updatePackageJson(this.dashboardPackagePath, newVersion);
 
     // Create git tag
-    console.log('\n🏷️  Creating git tag...');
+    console.log('\nCreating git tag...');
     this.createGitTag(newVersion);
 
-    console.log(`\n✨ Automatic versioning complete! New version: v${newVersion}`);
-    
+    console.log(`\nDone! New version: v${newVersion}`);
+
     // Return new version for use in build process
     return newVersion;
   }
@@ -253,7 +201,7 @@ class AutoVersioner {
 if (require.main === module) {
   const versioner = new AutoVersioner();
   versioner.run().catch(error => {
-    console.error('❌ Automatic versioning failed:', error.message);
+    console.error('Automatic versioning failed:', error.message);
     process.exit(1);
   });
 }

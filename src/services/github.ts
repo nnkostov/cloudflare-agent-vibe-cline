@@ -10,13 +10,12 @@ import {
 import { BaseService } from "./base";
 
 export class GitHubService extends BaseService {
-  private octokit: Octokit;
+  private get octokit(): Octokit {
+    return new Octokit({ auth: this.env.GITHUB_TOKEN });
+  }
 
   constructor(env: Env) {
     super(env);
-    this.octokit = new Octokit({
-      auth: env.GITHUB_TOKEN,
-    });
   }
 
   /**

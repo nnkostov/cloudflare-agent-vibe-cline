@@ -8,6 +8,13 @@ import { RepoAnalyzer } from "../analyzers/repoAnalyzer";
 import { RepoAnalyzerEnhanced } from "../analyzers/repoAnalyzer-enhanced";
 import { CONFIG as Config } from "../types";
 
+/** Check if a metric timestamp is older than maxAgeHours (or missing). */
+function isStale(timestamp: string | null, maxAgeHours: number): boolean {
+  if (!timestamp) return true;
+  const age = Date.now() - new Date(timestamp).getTime();
+  return age > maxAgeHours * 60 * 60 * 1000;
+}
+
 export class GitHubAgent {
   private state: DurableObjectState;
   private env: Env;
@@ -91,6 +98,7 @@ export class GitHubAgent {
         "/status": () => this.handleStatus(),
         "/report": () => this.handleReport(),
         "/init": () => this.handleInit(),
+        "/scheduled": () => this.handleScheduled(),
         "/metrics": () => this.handleMetrics(request),
         "/tiers": () => this.handleTiers(request),
         "/batch/active": () => this.handleGetActiveBatch(),
@@ -150,6 +158,25 @@ export class GitHubAgent {
     const nextRun = Date.now() + Config.github.scanInterval * 60 * 60 * 1000;
     await this.state.storage.setAlarm(nextRun);
     console.log(`Next scheduled run: ${new Date(nextRun).toISOString()}`);
+  }
+
+  /**
+   * Handle cron-triggered scheduled scan (does not reschedule alarm)
+   */
+  private async handleScheduled(): Promise<Response> {
+    console.log("=== Running cron-triggered scheduled operations ===");
+    try {
+      await this.comprehensiveScan();
+      await this.runAutomatedBatchAnalysis();
+      console.log("=== Cron-triggered operations completed ===");
+      return this.jsonResponse({ status: "completed" });
+    } catch (error) {
+      console.error("Error in cron-triggered operations:", error);
+      return this.jsonResponse(
+        { status: "failed", error: error instanceof Error ? error.message : "Unknown error" },
+        500,
+      );
+    }
   }
 
   /**
@@ -703,17 +730,45 @@ export class GitHubAgent {
   private async comprehensiveScan(): Promise<void> {
     console.log("Starting comprehensive repository scan...");
 
-    // 1. Discover new repositories using multiple strategies
+    // 1. Discover repositories using dynamic search strategies
+    const strategies = this.buildSearchStrategies();
     const allRepos = await this.githubEnhanced.searchComprehensive(
-      Config.github.searchStrategies,
+      strategies,
       Config.limits.reposPerScan,
     );
 
     console.log(`Found ${allRepos.length} repositories across all strategies`);
 
-    // 2. Save discovered repositories and assign tiers
+    // 2. Save only NEW repositories — known repos are updated by tier processing
+    const knownIds = await this.storage.getKnownRepoIds();
+    const knownSet = new Set(knownIds);
+
+    const recentRows = await this.storage.getRepoIdsWithRecentMetrics(24);
+    const recentlySnapshotted = new Set(recentRows.map((r) => r.repo_id));
+
+    let newCount = 0;
     for (const repo of allRepos) {
+      if (knownSet.has(repo.id)) {
+        // Update repositories row with fresh search data (no extra API call)
+        await this.storage.saveRepository(repo);
+        continue;
+      }
+      newCount++;
+
       await this.storage.saveRepository(repo);
+
+      if (!recentlySnapshotted.has(repo.id)) {
+        await this.storage.saveMetrics({
+          repo_id: repo.id,
+          stars: repo.stars,
+          forks: repo.forks,
+          open_issues: repo.open_issues,
+          watchers: repo.stars,
+          contributors: 0,
+          commits_count: 0,
+          recorded_at: new Date().toISOString(),
+        });
+      }
 
       // Calculate initial tier assignment
       const growthVelocity =
@@ -731,10 +786,82 @@ export class GitHubAgent {
       });
     }
 
-    // 3. Process each tier
+    console.log(
+      `Discovered ${newCount} new repositories, skipped ${allRepos.length - newCount} already known`,
+    );
+
+    // 3. Backfill repo_tiers for any repos missing tier assignments
+    await this.backfillRepoTiers();
+
+    // 4. Process each tier
     await this.processTier1Repos();
     await this.processTier2Repos();
     await this.processTier3Repos();
+  }
+
+  /**
+   * Build dynamic search strategies with relative date filters.
+   * Mixes established-repo monitoring with new-repo discovery.
+   */
+  private buildSearchStrategies(): Array<{ type: string; query: string }> {
+    const now = new Date();
+    const daysAgo = (n: number) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - n);
+      return d.toISOString().split("T")[0];
+    };
+
+    return [
+      // Established repos (top by stars)
+      { type: "topic", query: "topic:ai stars:>500" },
+      { type: "topic", query: "topic:llm stars:>500" },
+      // Recently created repos (new projects gaining traction)
+      { type: "recent", query: `created:>${daysAgo(30)} topic:ai stars:>5` },
+      { type: "recent", query: `created:>${daysAgo(30)} topic:llm stars:>5` },
+      // Recently active repos (fresh pushes in the last week)
+      {
+        type: "trending",
+        query: `pushed:>${daysAgo(7)} topic:ai stars:>20`,
+      },
+      {
+        type: "trending",
+        query: `pushed:>${daysAgo(7)} topic:machine-learning stars:>20`,
+      },
+      // Recently active Python AI repos
+      {
+        type: "trending",
+        query: `pushed:>${daysAgo(7)} language:python topic:ai stars:>10`,
+      },
+    ];
+  }
+
+  /**
+   * Assign tier rows to repos that exist in repositories but have no repo_tiers entry.
+   * This can happen if repos were inserted before tier tracking was added.
+   */
+  private async backfillRepoTiers(): Promise<void> {
+    const orphans = await this.storage.getReposWithoutTiers();
+    if (orphans.length === 0) return;
+
+    console.log(
+      `Backfilling tier assignments for ${orphans.length} orphaned repos`,
+    );
+
+    for (const repo of orphans) {
+      const growthVelocity =
+        repo.stars /
+        Math.max(
+          1,
+          (Date.now() - new Date(repo.created_at).getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+
+      await this.storageEnhanced.updateRepoTier(repo.id, {
+        stars: repo.stars,
+        growth_velocity: growthVelocity,
+        engagement_score: 50,
+      });
+    }
   }
 
   /**
@@ -823,7 +950,7 @@ export class GitHubAgent {
 
       for (
         let i = 0;
-        i < reposNeedingAnalysis.length && i < 30;
+        i < reposNeedingAnalysis.length && i < 100;
         i += CHUNK_SIZE
       ) {
         const chunk = reposNeedingAnalysis.slice(i, i + CHUNK_SIZE);
@@ -868,8 +995,8 @@ export class GitHubAgent {
               );
             }
 
-            // Rate limiting between analyses
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            // Rate limiting between analyses (Claude rate limiter enforces its own 2s minDelay)
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           } catch (error) {
             console.error(`Error analyzing ${repoData.full_name}:`, error);
             totalFailed++;
@@ -927,16 +1054,18 @@ export class GitHubAgent {
     // Build tier conditions based on force mode
     let tierConditions = [];
     if (force) {
+      // Force mode: tighter thresholds (1/3/5 days)
+      tierConditions = [
+        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-24 hours')))`,
+        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
+        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
+      ];
+    } else {
+      // Normal mode: standard thresholds (3/5/7 days)
       tierConditions = [
         `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
         `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
         `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
-      ];
-    } else {
-      tierConditions = [
-        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
-        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-240 hours')))`,
-        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-336 hours')))`,
       ];
     }
 
@@ -984,52 +1113,91 @@ export class GitHubAgent {
       const batch = tier1Repos.slice(i, i + BATCH_SIZE);
 
       for (const repoId of batch) {
-        const repo = await this.storage.getRepository(repoId);
+        let repo = await this.storage.getRepository(repoId);
         if (!repo) continue;
 
         try {
-          // Collect all enhanced metrics
+          // Refresh repo data from GitHub API to keep repositories table current
+          try {
+            const fresh = await this.github.getRepoDetails(
+              repo.owner,
+              repo.name,
+            );
+            await this.storage.saveRepository(fresh);
+            repo = fresh;
+          } catch (err) {
+            console.warn(
+              `Could not refresh ${repo.full_name}, using cached data`,
+            );
+          }
+
+          // Check per-metric freshness — only fetch stale metrics from GitHub
+          const freshness =
+            await this.storageEnhanced.getMetricsFreshness(repoId);
+
           const [commits, releases, prs, issues, stars, forks] =
             await Promise.all([
-              this.githubEnhanced.getCommitActivity(repo.owner, repo.name),
-              this.githubEnhanced.getReleaseMetrics(repo.owner, repo.name),
-              this.githubEnhanced.getPullRequestMetrics(repo.owner, repo.name),
-              this.githubEnhanced.getIssueMetrics(repo.owner, repo.name),
-              this.githubEnhanced.getStarHistory(repo.owner, repo.name),
-              this.githubEnhanced.analyzeForkNetwork(repo.owner, repo.name),
+              isStale(freshness.commits, 6)
+                ? this.githubEnhanced.getCommitActivity(repo.owner, repo.name)
+                : null,
+              isStale(freshness.releases, 24)
+                ? this.githubEnhanced.getReleaseMetrics(repo.owner, repo.name)
+                : null,
+              isStale(freshness.prs, 12)
+                ? this.githubEnhanced.getPullRequestMetrics(
+                    repo.owner,
+                    repo.name,
+                  )
+                : null,
+              isStale(freshness.issues, 12)
+                ? this.githubEnhanced.getIssueMetrics(repo.owner, repo.name)
+                : null,
+              isStale(freshness.stars, 12)
+                ? this.githubEnhanced.getStarHistory(repo.owner, repo.name)
+                : null,
+              isStale(freshness.forks, 24)
+                ? this.githubEnhanced.analyzeForkNetwork(
+                    repo.owner,
+                    repo.name,
+                  )
+                : null,
             ]);
 
-          // Save metrics with repo_id
+          // Save only freshly-fetched metrics (saveMetricsWithRepoId skips undefined)
           await this.saveMetricsWithRepoId(repoId, {
-            commits,
-            releases,
-            prs,
-            issues,
-            stars,
-            forks,
+            commits: commits ?? undefined,
+            releases: releases ?? undefined,
+            prs: prs ?? undefined,
+            issues: issues ?? undefined,
+            stars: stars ?? undefined,
+            forks: forks ?? undefined,
           });
 
-          // Analyze with enhanced metrics
+          // Read all metrics from D1 for scoring (includes just-saved + cached)
+          const cached =
+            await this.storageEnhanced.getComprehensiveMetrics(repoId);
+
+          // Analyze with complete D1 data
           const score = await this.analyzerEnhanced.analyzeWithMetrics(repo, {
-            commits,
-            releases,
-            pullRequests: prs,
-            issues,
-            stars,
-            forks,
+            commits: cached.commits,
+            releases: cached.releases,
+            pullRequests: cached.pullRequests,
+            issues: cached.issues,
+            stars: cached.stars,
+            forks: cached.forks,
           });
 
           // Update tier based on new score
           const growthVelocity = this.analyzerEnhanced.calculateGrowthVelocity(
             repo.stars,
-            stars,
+            cached.stars,
           );
           const engagementScore =
             this.analyzerEnhanced.calculateEngagementScoreForTier({
               forks: repo.forks,
               issues: repo.open_issues,
-              prActivity: prs?.total_prs,
-              contributors: prs?.unique_contributors,
+              prActivity: cached.pullRequests?.total_prs,
+              contributors: cached.pullRequests?.unique_contributors,
             });
 
           await this.storageEnhanced.updateRepoTier(repoId, {
@@ -1075,20 +1243,43 @@ export class GitHubAgent {
       const batch = tier2Repos.slice(i, i + BATCH_SIZE);
 
       for (const repoId of batch) {
-        const repo = await this.storage.getRepository(repoId);
+        let repo = await this.storage.getRepository(repoId);
         if (!repo) continue;
 
         try {
-          // Collect basic metrics only
+          // Refresh repo data from GitHub API to keep repositories table current
+          try {
+            const fresh = await this.github.getRepoDetails(
+              repo.owner,
+              repo.name,
+            );
+            await this.storage.saveRepository(fresh);
+            repo = fresh;
+          } catch (err) {
+            console.warn(
+              `Could not refresh ${repo.full_name}, using cached data`,
+            );
+          }
+
+          // Check per-metric freshness — only fetch stale metrics
+          const freshness =
+            await this.storageEnhanced.getMetricsFreshness(repoId);
+
           const [stars, issues] = await Promise.all([
-            this.githubEnhanced.getStarHistory(repo.owner, repo.name, 7),
-            this.githubEnhanced.getIssueMetrics(repo.owner, repo.name, 7),
+            isStale(freshness.stars, 12)
+              ? this.githubEnhanced.getStarHistory(repo.owner, repo.name, 7)
+              : null,
+            isStale(freshness.issues, 12)
+              ? this.githubEnhanced.getIssueMetrics(repo.owner, repo.name, 7)
+              : null,
           ]);
 
-          // Save basic metrics
-          await this.storageEnhanced.saveStarHistory(
-            stars.map((s) => ({ ...s, repo_id: repoId })),
-          );
+          // Save only freshly-fetched metrics
+          if (stars) {
+            await this.storageEnhanced.saveStarHistory(
+              stars.map((s) => ({ ...s, repo_id: repoId })),
+            );
+          }
           if (issues) {
             await this.storageEnhanced.saveIssueMetrics({
               ...issues,
@@ -1096,10 +1287,14 @@ export class GitHubAgent {
             });
           }
 
+          // Read from D1 for growth velocity calc (includes just-saved + cached)
+          const cached =
+            await this.storageEnhanced.getComprehensiveMetrics(repoId);
+
           // Check for promotion to Tier 1
           const growthVelocity = this.analyzerEnhanced.calculateGrowthVelocity(
             repo.stars,
-            stars,
+            cached.stars,
           );
           if (growthVelocity > 10 || repo.stars >= 100) {
             await this.storageEnhanced.updateRepoTier(repoId, {

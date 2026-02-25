@@ -233,16 +233,6 @@ export const CONFIG = {
         scanFrequency: 168, // weekly
       },
     },
-    // Multi-dimensional search strategies
-    searchStrategies: [
-      { type: "topic", query: "topic:ai stars:>10" },
-      { type: "topic", query: "topic:llm stars:>10" },
-      { type: "topic", query: "topic:machine-learning stars:>10" },
-      { type: "language", query: "language:python topic:ai stars:>50" },
-      { type: "language", query: "language:typescript topic:ai stars:>50" },
-      { type: "recent", query: "created:>2024-01-01 topic:ai stars:>20" },
-      { type: "trending", query: "pushed:>2024-12-01 topic:llm stars:>50" },
-    ],
   },
   claude: {
     models: {
