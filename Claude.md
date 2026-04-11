@@ -50,15 +50,18 @@ HTTP Request → src/index.ts (WorkerService)
 ### Core Components
 
 - **`src/index.ts`** — Worker entry point. Routes requests, serves dashboard static assets from KV, handles CORS. Exports the `GitHubAgent` Durable Object class.
-- **`src/agents/GitHubAgent.ts`** — Durable Object that orchestrates all business logic. Handles scheduled scanning (cron alarms), repo analysis, batch operations. This is where most API endpoints are actually implemented.
+- **`src/agents/GitHubAgent.ts`** — Durable Object shell. Handles HTTP routing, alarm/cron scheduling, and read-only query handlers. Delegates business logic to orchestrators.
+- **`src/orchestrators/`** — Business logic extracted from GitHubAgent for testability:
+  - `scanner.ts` — `ScanOrchestrator`: repo discovery, tier processing (Tier 1/2/3), metrics collection. Takes service deps + an `analyzeRepo` callback. All tier methods return `BatchResult` with error tracking.
+  - `analyzer.ts` — `AnalysisOrchestrator`: Claude analysis, batch processing, staleness-based repo selection. Takes service deps + a `saveBatchState` callback for DO state.
 - **`src/services/`** — Service classes that all extend `BaseService` (which provides `handleError()`, `jsonResponse()`, and D1 helper methods `dbRun`/`dbFirst`/`dbAll`/`dbBatch`):
   - `github.ts` / `github-enhanced.ts` — GitHub API client (search, metrics, contributors, rate limits)
   - `claude.ts` — Anthropic API integration. Builds prompts, selects model by score tier, parses structured analysis responses
-  - `storage.ts` / `storage-enhanced.ts` — D1 database + R2 storage operations
+  - `storage.ts` / `storage-enhanced.ts` — D1 database + R2 storage operations (including `getReposNeedingAnalysis` for tier-based staleness queries)
   - `diagnostics.ts` / `logs.ts` — System monitoring
 - **`src/analyzers/repoAnalyzer.ts`** — Scoring algorithm: `Total = 0.4×Growth + 0.3×Engagement + 0.3×Quality`. Determines which Claude model to use based on score.
-- **`src/types/index.ts`** — All TypeScript interfaces, the `Env` type (D1, R2, Durable Object bindings), and the `CONFIG`/`SCORING` constants.
-- **`src/utils/`** — Rate limiting, batch processing, stream processing, structured logging, performance monitoring.
+- **`src/types/index.ts`** — All TypeScript interfaces (`Env`, `BatchResult`, etc.), and the `CONFIG`/`SCORING` constants.
+- **`src/utils/`** — Rate limiting, `isStale()` timestamp utility, batch processing, structured logging, performance monitoring.
 - **`src/tail-worker.ts`** — Tail consumer for observability (processes worker logs/exceptions).
 
 ### Dashboard (`dashboard/`)
@@ -92,8 +95,10 @@ SQL schemas are in `database/schemas/`. Migrations run via `wrangler d1 execute 
 
 - All services extend `BaseService` which wraps D1 operations (`dbRun`, `dbFirst`, `dbAll`, `dbBatch`) with error handling.
 - The worker entry point (`src/index.ts`) proxies most `/api/agent/*` routes to the Durable Object; some routes like `/api/status` and `/api/scan` are handled directly.
+- **Orchestrator pattern**: `GitHubAgent` is a thin Durable Object shell that delegates to `ScanOrchestrator` and `AnalysisOrchestrator`. Orchestrators take service dependencies in their constructor plus callbacks for DO-specific operations (`analyzeRepo`, `saveBatchState`). This keeps business logic testable without the DO runtime.
+- **BatchResult error tracking**: All scan/analysis operations return `BatchResult { total, succeeded, failed, errors[] }` instead of silently swallowing errors. Callers log warnings when `failed > 0`.
 - Claude API responses are parsed from structured text (investment scores, recommendations) — see `parseResponse()` and `parseEnhancedResponse()` in `claude.ts`.
-- Rate limiting for both GitHub and Claude APIs is handled via utilities in `src/utils/simpleRateLimiter.ts`.
+- Rate limiting for both GitHub and Claude APIs is handled via utilities in `src/utils/rateLimiter.ts`.
 
 ## Deployment
 

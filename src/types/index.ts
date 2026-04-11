@@ -177,7 +177,7 @@ export interface Analysis {
 export interface Alert {
   id?: number;
   repo_id: string;
-  type: "high_growth" | "investment_opportunity" | "trend";
+  type: "high_growth" | "investment_opportunity" | "trend" | "system";
   level: "urgent" | "high" | "medium";
   message: string;
   metadata?: Record<string, any>;
@@ -195,6 +195,14 @@ export interface Trend {
   total_stars: number;
   examples: string[];
   detected_at: string;
+}
+
+// Orchestrator result types
+export interface BatchResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  errors: Array<{ id: string; name: string; error: string }>;
 }
 
 // Scoring types

@@ -455,6 +455,63 @@ export class StorageEnhancedService extends BaseService {
   }
 
   /**
+   * Get repositories that need analysis based on tier-specific staleness thresholds.
+   * Moved from GitHubAgent to keep all D1 queries in the service layer.
+   */
+  async getReposNeedingAnalysis(
+    target: "all" | "tier1" | "tier2" | "tier3" = "all",
+    force: boolean = false,
+  ): Promise<
+    Array<{
+      id: string;
+      full_name: string;
+      owner: string;
+      name: string;
+      tier: number;
+      stars: number;
+    }>
+  > {
+    let tierConditions: string[];
+    if (force) {
+      tierConditions = [
+        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-24 hours')))`,
+        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
+        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
+      ];
+    } else {
+      tierConditions = [
+        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
+        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
+        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
+      ];
+    }
+
+    let targetFilter = "";
+    if (target === "tier1") targetFilter = " AND rt.tier = 1";
+    if (target === "tier2") targetFilter = " AND rt.tier = 2";
+    if (target === "tier3") targetFilter = " AND rt.tier = 3";
+
+    const query = `
+      SELECT DISTINCT r.id, r.full_name, r.owner, r.name, rt.tier, r.stars
+      FROM repositories r
+      JOIN repo_tiers rt ON r.id = rt.repo_id
+      LEFT JOIN (
+        SELECT repo_id, MAX(created_at) as created_at
+        FROM analyses
+        GROUP BY repo_id
+      ) a ON r.id = a.repo_id
+      WHERE r.is_archived = 0 AND r.is_fork = 0
+        AND (${tierConditions.join(" OR ")})
+        ${targetFilter}
+      ORDER BY rt.tier ASC, r.stars DESC
+      LIMIT 200
+    `;
+
+    const results = await this.env.DB.prepare(query).all();
+    return (results.results || []) as any[];
+  }
+
+  /**
    * Get the latest recorded_at timestamp per enhanced metric type for a repo.
    * Returns a map like { commits: "2024-...", releases: null, ... }.
    * Used to decide which metrics need re-fetching from GitHub.
