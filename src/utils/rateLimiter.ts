@@ -173,10 +173,10 @@ export const githubSearchRateLimiter = new RateLimiter({
  * Claude/Anthropic API rate limiter (very restrictive)
  */
 export const claudeRateLimiter = new RateLimiter({
-  maxRequests: 5, // 5 requests per minute (conservative for free tier)
+  maxRequests: 30, // 30 requests per minute (paid Build tier allows 50 RPM)
   windowMs: 60 * 1000, // 1 minute window
-  maxBurst: 2, // Small burst allowed
-  minDelay: 2000, // 2 seconds minimum between requests
+  maxBurst: 5, // Moderate burst allowed
+  minDelay: 500, // 500ms minimum between requests
 });
 
 /**

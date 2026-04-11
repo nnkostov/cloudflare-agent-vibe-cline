@@ -98,7 +98,7 @@ export class GitHubAgent {
         "/status": () => this.handleStatus(),
         "/report": () => this.handleReport(),
         "/init": () => this.handleInit(),
-        "/scheduled": () => this.handleScheduled(),
+        "/scheduled": () => this.handleScheduled(request),
         "/metrics": () => this.handleMetrics(request),
         "/tiers": () => this.handleTiers(request),
         "/batch/active": () => this.handleGetActiveBatch(),
@@ -161,19 +161,45 @@ export class GitHubAgent {
   }
 
   /**
-   * Handle cron-triggered scheduled scan (does not reschedule alarm)
+   * Handle cron-triggered scheduled operations (does not reschedule alarm).
+   * Routes based on cron pattern:
+   *   "15,45 * * * *"  → analysis-only (every 30 min)
+   *   "0 2,14 * * *"   → full sweep: scan + analysis (twice daily)
+   *   "0 * * * *"      → scan only (hourly)
    */
-  private async handleScheduled(): Promise<Response> {
-    console.log("=== Running cron-triggered scheduled operations ===");
+  private async handleScheduled(request?: Request): Promise<Response> {
+    let cron = "";
     try {
-      await this.comprehensiveScan();
-      await this.runAutomatedBatchAnalysis();
+      if (request) {
+        const body = (await request.json()) as any;
+        cron = body?.cron || "";
+      }
+    } catch {
+      // Empty or invalid body — default to full sweep
+    }
+
+    console.log(`=== Running cron-triggered operations (cron: ${cron || "unknown"}) ===`);
+    try {
+      if (cron === "15,45 * * * *") {
+        // Analysis-only runs (every 30 min)
+        console.log("Mode: analysis-only batch run");
+        await this.runAutomatedBatchAnalysis();
+      } else if (cron === "0 2,14 * * *") {
+        // Full sweep: scan + analysis (twice daily)
+        console.log("Mode: full sweep (scan + analysis)");
+        await this.comprehensiveScan();
+        await this.runAutomatedBatchAnalysis();
+      } else {
+        // Hourly: scan only (discover repos, update metrics)
+        console.log("Mode: scan only");
+        await this.comprehensiveScan();
+      }
       console.log("=== Cron-triggered operations completed ===");
-      return this.jsonResponse({ status: "completed" });
+      return this.jsonResponse({ status: "completed", cron });
     } catch (error) {
       console.error("Error in cron-triggered operations:", error);
       return this.jsonResponse(
-        { status: "failed", error: error instanceof Error ? error.message : "Unknown error" },
+        { status: "failed", cron, error: error instanceof Error ? error.message : "Unknown error" },
         500,
       );
     }
@@ -955,7 +981,7 @@ export class GitHubAgent {
 
       for (
         let i = 0;
-        i < reposNeedingAnalysis.length && i < 100;
+        i < reposNeedingAnalysis.length && i < 200;
         i += CHUNK_SIZE
       ) {
         const chunk = reposNeedingAnalysis.slice(i, i + CHUNK_SIZE);
@@ -969,8 +995,8 @@ export class GitHubAgent {
               continue;
             }
 
-            // Analyze the repository
-            await this.analyzeRepository(repo);
+            // Analyze the repository (force=true: staleness query already filters appropriately)
+            await this.analyzeRepository(repo, true);
             totalSucceeded++;
 
             // Update batch progress in DO state
@@ -1000,8 +1026,8 @@ export class GitHubAgent {
               );
             }
 
-            // Rate limiting between analyses (Claude rate limiter enforces its own 2s minDelay)
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            // Brief pause for DO state updates (Claude rate limiter handles API pacing)
+            await new Promise((resolve) => setTimeout(resolve, 200));
           } catch (error) {
             console.error(`Error analyzing ${repoData.full_name}:`, error);
             totalFailed++;
@@ -1093,7 +1119,7 @@ export class GitHubAgent {
         AND (${tierConditions.join(" OR ")})
         ${targetFilter}
       ORDER BY rt.tier ASC, r.stars DESC
-      LIMIT 100
+      LIMIT 200
     `;
 
     const results = await this.env.DB.prepare(query).all();
@@ -1214,13 +1240,11 @@ export class GitHubAgent {
           // Mark as scanned
           await this.storageEnhanced.markRepoScanned(repoId, "deep");
 
-          // If high potential, run Claude analysis
-          if (this.analyzerEnhanced.isHighPotential(score)) {
-            await this.analyzeRepository(repo);
-          }
+          // All Tier 1 ("hot prospects") repos get Claude analysis
+          await this.analyzeRepository(repo, true);
 
-          // Rate limiting
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // Rate limiting (Claude rate limiter handles API pacing)
+          await new Promise((resolve) => setTimeout(resolve, 200));
         } catch (error) {
           console.error(
             `Error processing tier 1 repo ${repo.full_name}:`,

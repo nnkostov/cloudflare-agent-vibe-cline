@@ -259,7 +259,7 @@ export const CONFIG = {
   },
   limits: {
     reposPerScan: 3500, // Total across all tiers
-    analysesPerDay: 50,
+    analysesPerDay: 200,
     cacheHours: 168, // 7 days
     apiRequestsPerHour: 5000, // GitHub rate limit
   },

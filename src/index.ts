@@ -20,7 +20,11 @@ export default {
     const id = env.GITHUB_AGENT.idFromName("main");
     const agent = env.GITHUB_AGENT.get(id);
     const response = await agent.fetch(
-      new Request("http://internal/scheduled", { method: "POST" }),
+      new Request("http://internal/scheduled", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cron: event.cron }),
+      }),
     );
     if (!response.ok) {
       console.error("[Cron] Scheduled scan failed:", await response.text());
