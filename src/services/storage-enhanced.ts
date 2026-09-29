@@ -260,10 +260,21 @@ export class StorageEnhancedService extends BaseService {
    */
   async saveRepoTier(tier: RepoTier): Promise<void> {
     await this.dbRun(
-      `INSERT OR REPLACE INTO repo_tiers
+      `INSERT INTO repo_tiers
        (repo_id, tier, stars, last_deep_scan, last_basic_scan,
         growth_velocity, engagement_score, scan_priority, next_scan_due, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(repo_id) DO UPDATE SET
+         tier = EXCLUDED.tier,
+         stars = EXCLUDED.stars,
+         -- Preserve existing scan timestamps unless explicitly provided
+         last_deep_scan = COALESCE(EXCLUDED.last_deep_scan, repo_tiers.last_deep_scan),
+         last_basic_scan = COALESCE(EXCLUDED.last_basic_scan, repo_tiers.last_basic_scan),
+         growth_velocity = EXCLUDED.growth_velocity,
+         engagement_score = EXCLUDED.engagement_score,
+         scan_priority = EXCLUDED.scan_priority,
+         next_scan_due = EXCLUDED.next_scan_due,
+         updated_at = CURRENT_TIMESTAMP`,
       tier.repo_id,
       tier.tier,
       tier.stars,

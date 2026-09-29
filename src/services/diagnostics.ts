@@ -236,16 +236,16 @@ export class DiagnosticsService extends BaseService {
           r.id,
           r.full_name,
           COALESCE(rt.tier, 3) as tier,
-          rt.last_basic_scan as last_scan,
+          COALESCE(rt.last_basic_scan, rt.last_deep_scan) as last_scan,
           CASE 
-            WHEN rt.last_basic_scan IS NOT NULL 
-            THEN ROUND((julianday('now') - julianday(rt.last_basic_scan)) * 24, 2)
+            WHEN COALESCE(rt.last_basic_scan, rt.last_deep_scan) IS NOT NULL 
+            THEN ROUND((julianday('now') - julianday(COALESCE(rt.last_basic_scan, rt.last_deep_scan))) * 24, 2)
             ELSE NULL
           END as hours_since_scan
         FROM repositories r
         LEFT JOIN repo_tiers rt ON r.id = rt.repo_id
-        WHERE rt.last_basic_scan IS NULL 
-           OR rt.last_basic_scan < ?
+        WHERE COALESCE(rt.last_basic_scan, rt.last_deep_scan) IS NULL 
+           OR COALESCE(rt.last_basic_scan, rt.last_deep_scan) < ?
         ORDER BY rt.tier ASC, r.stars DESC
         LIMIT 20
       `,
@@ -253,9 +253,18 @@ export class DiagnosticsService extends BaseService {
         .bind(cutoff.toISOString())
         .all();
 
+      // Count only repositories matching the same staleness filter
       const totalResult = await this.env.DB.prepare(
-        "SELECT COUNT(*) as count FROM repositories",
-      ).first<{ count: number }>();
+        `
+        SELECT COUNT(*) as count
+        FROM repositories r
+        LEFT JOIN repo_tiers rt ON r.id = rt.repo_id
+        WHERE COALESCE(rt.last_basic_scan, rt.last_deep_scan) IS NULL 
+           OR COALESCE(rt.last_basic_scan, rt.last_deep_scan) < ?
+        `,
+      )
+        .bind(cutoff.toISOString())
+        .first<{ count: number }>();
 
       return {
         total: totalResult?.count || 0,
