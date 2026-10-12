@@ -38,6 +38,8 @@ export default {
 import manifestJSON from "__STATIC_CONTENT_MANIFEST";
 const assetManifest = JSON.parse(manifestJSON);
 
+const INTERNAL_AGENT_PATHS = new Set(["/scheduled", "/init"]);
+
 class WorkerService extends BaseService {
   private corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -198,7 +200,6 @@ class WorkerService extends BaseService {
       "/alerts": () => this.handleAlerts(),
       "/reports/daily": () => this.handleDailyReport(),
       "/reports/enhanced": () => this.handleEnhancedReport(),
-      "/agent/init": () => this.handleAgentInit(),
       "/status": () => this.handleStatus(),
       "/diagnostics/data-freshness": () => this.handleDataFreshness(),
       "/diagnostics/scan-history": () => this.handleScanHistory(),
@@ -226,6 +227,12 @@ class WorkerService extends BaseService {
     const handler = directHandlers[agentPath];
     if (handler) {
       return handler();
+    }
+
+    // Internal Durable Object routes are only for the cron handler, which
+    // calls the DO directly; never expose them through the public API.
+    if (INTERNAL_AGENT_PATHS.has(agentPath)) {
+      return new Response("Not found", { status: 404 });
     }
 
     // Forward to Durable Object
@@ -807,34 +814,6 @@ class WorkerService extends BaseService {
         });
       }, "generate enhanced report");
     });
-  }
-
-  private async handleAgentInit(): Promise<Response> {
-    return this.handleError(async () => {
-      // Forward the initialization request to the Durable Object
-      const id = this.env.GITHUB_AGENT.idFromName("main");
-      const agent = this.env.GITHUB_AGENT.get(id);
-
-      // Call the Durable Object's init endpoint
-      const initResponse = await agent.fetch(
-        new Request("http://internal/init", {
-          method: "POST",
-        }),
-      );
-
-      if (!initResponse.ok) {
-        const error = await initResponse.text();
-        throw new Error(`Failed to initialize agent: ${error}`);
-      }
-
-      const result = (await initResponse.json()) as any;
-
-      return this.jsonResponse({
-        message: "Agent initialized successfully",
-        nextRun: result.nextRun,
-        status: "ready",
-      });
-    }, "initialize agent");
   }
 
   private async handleStatus(): Promise<Response> {

@@ -10,6 +10,18 @@ import { RepoAnalyzerEnhanced } from "../analyzers/repoAnalyzer-enhanced";
 import { ScanOrchestrator } from "../orchestrators/scanner";
 import { AnalysisOrchestrator } from "../orchestrators/analyzer";
 import type { BatchState } from "../orchestrators/analyzer";
+import {
+  tryAcquireLock,
+  heartbeatLock,
+  releaseLock,
+} from "../utils/runLock";
+
+const BATCH_LOCK = "lock:batch";
+const SCAN_LOCK = "lock:scan";
+// Batch runs heartbeat after every repo; a scan has no heartbeat, so its
+// lock only expires once a scan could no longer plausibly be running.
+const BATCH_LOCK_STALE_MS = 10 * 60 * 1000;
+const SCAN_LOCK_STALE_MS = 45 * 60 * 1000;
 
 export class GitHubAgent {
   private state: DurableObjectState;
@@ -43,8 +55,12 @@ export class GitHubAgent {
       storage,
       storageEnhanced,
       analyzer,
-      saveBatchState: (batchId: string, batchState: BatchState) =>
-        this.state.storage.put(`batch:${batchId}`, batchState),
+      saveBatchState: async (batchId: string, batchState: BatchState) => {
+        await this.state.storage.put(`batch:${batchId}`, batchState);
+        if (batchState.status === "active") {
+          await heartbeatLock(this.state.storage, BATCH_LOCK);
+        }
+      },
     });
 
     this.scanner = new ScanOrchestrator({
@@ -132,7 +148,6 @@ export class GitHubAgent {
         "/analyze": () => this.handleAnalyze(request),
         "/status": () => this.handleStatus(),
         "/report": () => this.handleReport(),
-        "/init": () => this.handleInit(),
         "/scheduled": () => this.handleScheduled(request),
         "/metrics": () => this.handleMetrics(request),
         "/tiers": () => this.handleTiers(request),
@@ -158,47 +173,47 @@ export class GitHubAgent {
   // Scheduling
   // ---------------------------------------------------------------------------
 
-  private async handleInit(): Promise<Response> {
-    const nextRun = Date.now() + Config.github.scanInterval * 60 * 60 * 1000;
-    await this.state.storage.setAlarm(nextRun);
-    return this.jsonResponse({
-      message: "Agent initialized",
-      nextRun: new Date(nextRun).toISOString(),
-    });
+  /**
+   * Legacy alarm handler. Scheduling is done by cron triggers only; an older
+   * build re-armed an hourly alarm here, which duplicated the cron runs.
+   * Any alarm still armed fires this once and is not re-armed.
+   */
+  async alarm(): Promise<void> {
+    console.log("Legacy alarm fired; ignoring (scheduling is cron-only)");
   }
 
-  async alarm(): Promise<void> {
-    console.log("=== Running automated scheduled operations ===");
-
-    try {
-      console.log("Phase 1: Scanning for new repositories...");
-      const scanResult = await this.scanner.comprehensiveScan();
-
-      console.log("Phase 2: Running automated batch analysis...");
-      const batchResult = await this.analysisOrchestrator.runBatch();
-
-      if (scanResult.failed > 0) {
-        console.warn(
-          `Scheduled scan: ${scanResult.failed}/${scanResult.total} failed`,
-        );
-        await this.saveSystemAlert("scan", scanResult);
-      }
-      if (batchResult.failed > 0) {
-        console.warn(
-          `Scheduled analysis: ${batchResult.failed}/${batchResult.total} failed`,
-        );
-        await this.saveSystemAlert("analysis", batchResult);
-      }
-
-      console.log("=== Scheduled operations completed ===");
-    } catch (error) {
-      console.error("Fatal error in scheduled operations:", error);
+  /** Run a scan unless another scan holds the lock. */
+  private async runScanLocked(): Promise<BatchResult | null> {
+    if (
+      !(await tryAcquireLock(this.state.storage, SCAN_LOCK, SCAN_LOCK_STALE_MS))
+    ) {
+      console.log("Skipping scan: another scan is still running");
+      return null;
     }
+    try {
+      return await this.scanner.comprehensiveScan();
+    } finally {
+      await releaseLock(this.state.storage, SCAN_LOCK);
+    }
+  }
 
-    // Schedule next run
-    const nextRun = Date.now() + Config.github.scanInterval * 60 * 60 * 1000;
-    await this.state.storage.setAlarm(nextRun);
-    console.log(`Next scheduled run: ${new Date(nextRun).toISOString()}`);
+  /** Run an analysis batch unless another batch holds the lock. */
+  private async runBatchLocked(): Promise<BatchResult | null> {
+    if (
+      !(await tryAcquireLock(
+        this.state.storage,
+        BATCH_LOCK,
+        BATCH_LOCK_STALE_MS,
+      ))
+    ) {
+      console.log("Skipping analysis batch: another batch is still running");
+      return null;
+    }
+    try {
+      return await this.analysisOrchestrator.runBatch();
+    } finally {
+      await releaseLock(this.state.storage, BATCH_LOCK);
+    }
   }
 
   /**
@@ -206,7 +221,9 @@ export class GitHubAgent {
    * Routes by cron pattern:
    *   "15,45 * * * *"  -> analysis-only (every 30 min)
    *   "0 2,14 * * *"   -> full sweep: scan + analysis (twice daily)
-   *   "0 * * * *"      -> scan only (hourly)
+   *   anything else    -> scan only (hourly, skipping 02:00 and 14:00)
+   * Scans and batches each hold a run lock, so a run that outlasts its
+   * cron interval is never started twice.
    */
   private async handleScheduled(request?: Request): Promise<Response> {
     let cron = "";
@@ -224,27 +241,22 @@ export class GitHubAgent {
     );
 
     try {
-      if (cron === "15,45 * * * *") {
-        console.log("Mode: analysis-only batch run");
-        const result = await this.analysisOrchestrator.runBatch();
-        if (result.failed > 0) {
-          await this.saveSystemAlert("analysis", result);
-        }
-      } else if (cron === "0 2,14 * * *") {
-        console.log("Mode: full sweep (scan + analysis)");
-        const scanResult = await this.scanner.comprehensiveScan();
-        const batchResult = await this.analysisOrchestrator.runBatch();
-        if (scanResult.failed > 0) {
+      const runScan = cron !== "15,45 * * * *";
+      const runBatch = cron === "15,45 * * * *" || cron === "0 2,14 * * *";
+      console.log(
+        `Mode: ${runScan && runBatch ? "full sweep (scan + analysis)" : runScan ? "scan only" : "analysis-only batch run"}`,
+      );
+
+      if (runScan) {
+        const scanResult = await this.runScanLocked();
+        if (scanResult && scanResult.failed > 0) {
           await this.saveSystemAlert("scan", scanResult);
         }
-        if (batchResult.failed > 0) {
+      }
+      if (runBatch) {
+        const batchResult = await this.runBatchLocked();
+        if (batchResult && batchResult.failed > 0) {
           await this.saveSystemAlert("analysis", batchResult);
-        }
-      } else {
-        console.log("Mode: scan only");
-        const result = await this.scanner.comprehensiveScan();
-        if (result.failed > 0) {
-          await this.saveSystemAlert("scan", result);
         }
       }
 
