@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@cloudflare/kv-asset-handler": "^0.4.0",
     "@cloudflare/workers-types": "^4.20241205.0",
     "@miniflare/d1": "^2.14.4",

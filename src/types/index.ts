@@ -134,11 +134,13 @@ export interface Contributor {
   public_repos: number;
 }
 
-// Simplified Analysis types
+// Analysis types
 export type ClaudeModel =
-  | "claude-opus-4-6" // Claude 4.6 Opus (latest, most capable)
-  | "claude-sonnet-4-6" // Claude 4.6 Sonnet (latest, balanced)
-  | "claude-haiku-4-5-20251001"; // Claude 4.5 Haiku (fast)
+  | "claude-opus-5-5" // deep analysis for the highest-scoring repos
+  | "claude-sonnet-5-5" // standard analysis
+  | "claude-haiku-5-5"; // quick scan for the long tail
+
+export type ClaudeEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type Recommendation = "strong-buy" | "buy" | "watch" | "pass";
 
@@ -149,7 +151,7 @@ export interface Analysis {
     innovation: number;
     team: number;
     market: number;
-    // New scores for enhanced analysis with Claude-4
+    // Optional because analyses saved before Oct 2026 don't have them
     technical_moat?: number;
     scalability?: number;
     developer_adoption?: number;
@@ -159,17 +161,18 @@ export interface Analysis {
   strengths: string[];
   risks: string[];
   questions: string[];
-  // New fields for enhanced Claude-4 analysis
   growth_prediction?: string;
   investment_thesis?: string;
   competitive_analysis?: string;
   metadata: {
-    model: ClaudeModel;
+    // The model that produced the analysis. A string rather than
+    // ClaudeModel: older rows hold retired IDs, and a refusal fallback can
+    // be served by a model outside the ClaudeModel set.
+    model: string;
     cost: number;
     timestamp: string;
-    tokens_used?: number;
-    error?: string;
-    fallback?: boolean;
+    input_tokens?: number;
+    output_tokens?: number;
   };
 }
 
@@ -244,22 +247,33 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: "claude-opus-4-6" as ClaudeModel, // Claude 4.6 Opus - most capable model
-      medium: "claude-sonnet-4-6" as ClaudeModel, // Claude 4.6 Sonnet - balanced performance
-      low: "claude-haiku-4-5-20251001" as ClaudeModel, // Claude 4.5 Haiku for efficiency
+      high: "claude-opus-5-5" as ClaudeModel,
+      medium: "claude-sonnet-5-5" as ClaudeModel,
+      low: "claude-haiku-5-5" as ClaudeModel,
     },
     thresholds: {
-      high: 70, // Use latest Claude 3.5 Sonnet for high-value repos
-      medium: 50, // Use previous Claude 3.5 Sonnet for medium repos
+      high: 70, // score.total at or above this gets the high model
+      medium: 50, // score.total at or above this gets the medium model
     },
-    maxTokens: {
-      opus: 8192, // Claude 4.6 Opus
-      sonnet: 8192, // Claude 4.6 Sonnet
-      haiku: 8192, // Claude 4.5 Haiku
-    },
-    // Feature flags for migration
-    useClaude4: true,
-    enhancedAnalysis: true,
+    // Thinking is always on for these models and counts toward this cap,
+    // so leave room beyond the ~2-3K-token analysis JSON.
+    maxTokens: 16000,
+    // How much the model thinks: the main quality/cost/latency lever.
+    effort: {
+      "claude-opus-5-5": "medium",
+      "claude-sonnet-5-5": "medium",
+      "claude-haiku-5-5": "low",
+    } as Record<ClaudeModel, ClaudeEffort>,
+    // USD per million tokens. Haiku's rate is for prompts up to 100K
+    // tokens, which every analysis prompt is.
+    pricing: {
+      "claude-opus-5-5": { input: 4, output: 20 },
+      "claude-sonnet-5-5": { input: 2, output: 10 },
+      "claude-haiku-5-5": { input: 0.1, output: 0.5 },
+    } as Record<ClaudeModel, { input: number; output: number }>,
+    // Models with server-side refusal fallback. Haiku 5.5 has none; a
+    // refused Haiku analysis is retried on the medium model instead.
+    serverSideFallback: ["claude-opus-5-5", "claude-sonnet-5-5"] as ClaudeModel[],
   },
   alerts: {
     growthThreshold: 200, // percent

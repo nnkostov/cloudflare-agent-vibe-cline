@@ -1,383 +1,308 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ClaudeService } from "./claude";
+import {
+  ClaudeService,
+  AnalysisRefusedError,
+  AnalysisTruncatedError,
+  AnalysisInvalidError,
+  classifyAnalysisError,
+} from "./claude";
 import type { Repository, Env } from "../types";
+import {
+  VALID_ANALYSIS,
+  messageResponse,
+  errorResponse,
+  requestAt,
+} from "../test/anthropicMock";
 
-// Mock fetch globally
+// The real limiter would make tests wait between calls
+vi.mock("../utils/rateLimiter", () => ({
+  claudeRateLimiter: { acquire: vi.fn().mockResolvedValue(undefined) },
+}));
+
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
 
+const repo: Repository = {
+  id: "test-123",
+  name: "test-repo",
+  owner: "test-owner",
+  full_name: "test-owner/test-repo",
+  description: "A test repository",
+  stars: 1000,
+  forks: 200,
+  open_issues: 50,
+  language: "TypeScript",
+  topics: ["ai", "ml", "test"],
+  created_at: "2023-01-01T00:00:00Z",
+  updated_at: "2024-01-01T00:00:00Z",
+  pushed_at: "2024-01-01T00:00:00Z",
+  is_archived: false,
+  is_fork: false,
+  html_url: "https://github.com/test-owner/test-repo",
+  clone_url: "https://github.com/test-owner/test-repo.git",
+  default_branch: "main",
+};
+
+const readme = "# Test Repository\n\nThis is a test repository for AI/ML.";
+
 describe("ClaudeService", () => {
   let service: ClaudeService;
-  let mockEnv: Env;
-
-  const mockRepo: Repository = {
-    id: "test-123",
-    name: "test-repo",
-    owner: "test-owner",
-    full_name: "test-owner/test-repo",
-    description: "A test repository",
-    stars: 1000,
-    forks: 200,
-    open_issues: 50,
-    language: "TypeScript",
-    topics: ["ai", "ml", "test"],
-    created_at: "2023-01-01T00:00:00Z",
-    updated_at: "2024-01-01T00:00:00Z",
-    pushed_at: "2024-01-01T00:00:00Z",
-    is_archived: false,
-    is_fork: false,
-    html_url: "https://github.com/test-owner/test-repo",
-    clone_url: "https://github.com/test-owner/test-repo.git",
-    default_branch: "main",
-  };
-
-  const mockReadme =
-    "# Test Repository\n\nThis is a test repository for AI/ML projects.";
 
   beforeEach(() => {
-    mockEnv = {
+    mockFetch.mockReset();
+    const env: Env = {
       DB: {} as any,
       STORAGE: {} as any,
       GITHUB_AGENT: {} as any,
       GITHUB_TOKEN: "test-github-token",
       ANTHROPIC_API_KEY: "test-anthropic-key",
     };
-    service = new ClaudeService(mockEnv);
-    vi.clearAllMocks();
+    service = new ClaudeService(env);
   });
 
-  describe("isClaudeV4Model", () => {
-    it("should identify Claude 4 models correctly", () => {
-      // Access private method through any type casting for testing
-      const serviceAny = service as any;
-
-      expect(serviceAny.isClaudeV4Model("claude-opus-4-6")).toBe(true);
-      expect(serviceAny.isClaudeV4Model("claude-sonnet-4-6")).toBe(true);
-      expect(serviceAny.isClaudeV4Model("claude-haiku-4-5-20251001")).toBe(
-        true,
-      );
-    });
-  });
-
-  describe("getMaxTokensForModel", () => {
-    it("should return correct token limits for each model type", () => {
-      const serviceAny = service as any;
-
-      expect(serviceAny.getMaxTokensForModel("claude-opus-4-6")).toBe(8192);
-      expect(serviceAny.getMaxTokensForModel("claude-sonnet-4-6")).toBe(8192);
-      expect(
-        serviceAny.getMaxTokensForModel("claude-haiku-4-5-20251001"),
-      ).toBe(8192);
-    });
-  });
-
-  describe("estimateCost", () => {
-    it("should calculate correct costs for each model", () => {
-      const serviceAny = service as any;
-      const responseLength = 4000; // ~1000 tokens
-
-      // Test Claude 4.6 models
-      expect(
-        serviceAny.estimateCost("claude-opus-4-6", responseLength),
-      ).toBeCloseTo(0.005, 3);
-      expect(
-        serviceAny.estimateCost("claude-sonnet-4-6", responseLength),
-      ).toBeCloseTo(0.003, 3);
-
-      // Test Haiku
-      expect(
-        serviceAny.estimateCost("claude-haiku-4-5-20251001", responseLength),
-      ).toBeCloseTo(0.001, 3);
-    });
-  });
-
-  describe("analyzeRepository", () => {
-    it("should analyze repository with claude-opus-4-6 model", async () => {
-      const mockResponse = {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              scores: {
-                investment: 85,
-                innovation: 90,
-                team: 80,
-                market: 88,
-                technical_moat: 92,
-                scalability: 87,
-                developer_adoption: 85,
-              },
-              recommendation: "strong-buy",
-              summary: "Excellent AI/ML project with strong potential.",
-              strengths: ["Strong team", "Innovative approach"],
-              risks: ["Market competition"],
-              questions: ["What is the monetization strategy?"],
-              growth_prediction: "Expected 10x growth in 12 months",
-              investment_thesis: "Strong technical moat and growing adoption",
-              competitive_analysis: "Leading position in the market",
-            }),
-          },
-        ],
-        usage: { input_tokens: 1000, output_tokens: 500 },
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
-
-      const result = await service.analyzeRepository(
-        mockRepo,
-        mockReadme,
-        "claude-opus-4-6",
+  describe("successful analysis", () => {
+    it("maps the structured output to an Analysis, reading the text block by type", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({ model: "claude-opus-5-5" }),
       );
 
-      expect(result.scores.investment).toBe(85);
-      expect(result.scores.technical_moat).toBe(92);
-      expect(result.recommendation).toBe("strong-buy");
-      expect(result.growth_prediction).toBe("Expected 10x growth in 12 months");
-      expect(result.metadata.model).toBe("claude-opus-4-6");
+      const analysis = await service.analyzeRepository(
+        repo,
+        readme,
+        "claude-opus-5-5",
+      );
 
-      // Verify API call
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.anthropic.com/v1/messages",
-        expect.objectContaining({
-          method: "POST",
-          headers: expect.objectContaining({
-            "x-api-key": "test-anthropic-key",
-            "Content-Type": "application/json",
-          }),
-          body: expect.stringContaining("claude-opus-4-6"),
+      expect(analysis.repo_id).toBe("test-123");
+      expect(analysis.scores).toEqual(VALID_ANALYSIS.scores);
+      expect(analysis.recommendation).toBe("buy");
+      expect(analysis.questions).toEqual(VALID_ANALYSIS.questions);
+      expect(analysis.growth_prediction).toBe(VALID_ANALYSIS.growth_prediction);
+      expect(analysis.investment_thesis).toBe(VALID_ANALYSIS.investment_thesis);
+      expect(analysis.competitive_analysis).toBe(
+        VALID_ANALYSIS.competitive_analysis,
+      );
+      expect(analysis.metadata.model).toBe("claude-opus-5-5");
+    });
+
+    it("computes cost from actual token usage", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({
+          model: "claude-opus-5-5",
+          inputTokens: 2000,
+          outputTokens: 800,
         }),
       );
+
+      const analysis = await service.analyzeRepository(
+        repo,
+        readme,
+        "claude-opus-5-5",
+      );
+
+      // Opus 5.5: $4 / $20 per MTok
+      expect(analysis.metadata.cost).toBeCloseTo(
+        (2000 * 4 + 800 * 20) / 1_000_000,
+        10,
+      );
+      expect(analysis.metadata.input_tokens).toBe(2000);
+      expect(analysis.metadata.output_tokens).toBe(800);
     });
 
-    it("should analyze repository with claude-sonnet-4-6 model", async () => {
-      const mockResponse = {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              scores: {
-                investment: 70,
-                innovation: 75,
-                team: 65,
-                market: 72,
-                technical_moat: 68,
-                scalability: 70,
-                developer_adoption: 66,
-              },
-              recommendation: "buy",
-              summary: "Solid AI project with good potential.",
-              strengths: ["Good technology"],
-              risks: ["Needs more adoption"],
-              questions: ["How will you scale?"],
-              growth_prediction: "Steady growth expected",
-              investment_thesis: "Worth watching",
-              competitive_analysis: "Competitive market",
-            }),
-          },
-        ],
-        usage: { input_tokens: 800, output_tokens: 400 },
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
-
-      const result = await service.analyzeRepository(
-        mockRepo,
-        mockReadme,
-        "claude-sonnet-4-6",
+    it("clamps scores into 0-100 and drops an empty investment thesis", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({
+          text: JSON.stringify({
+            ...VALID_ANALYSIS,
+            scores: { ...VALID_ANALYSIS.scores, investment: 105, team: -3 },
+            recommendation: "watch",
+            investment_thesis: "",
+          }),
+        }),
       );
 
-      expect(result.scores.investment).toBe(70);
-      expect(result.recommendation).toBe("buy");
-      expect(result.metadata.model).toBe("claude-sonnet-4-6");
+      const analysis = await service.analyzeRepository(repo, readme);
+
+      expect(analysis.scores.investment).toBe(100);
+      expect(analysis.scores.team).toBe(0);
+      expect(analysis.investment_thesis).toBeUndefined();
     });
-
-    it("should handle API errors gracefully", async () => {
-      // Mock the rate limiter to allow the request
-      vi.mock("../utils/rateLimiter", () => ({
-        claudeRateLimiter: {
-          checkLimit: vi.fn().mockResolvedValue(true),
-          getWaitTime: vi.fn().mockReturnValue(0),
-        },
-        withExponentialBackoff: vi.fn((fn) => fn()),
-      }));
-
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        text: async () => "Rate limit exceeded",
-      });
-
-      await expect(
-        service.analyzeRepository(
-          mockRepo,
-          mockReadme,
-          "claude-opus-4-6",
-        ),
-      ).rejects.toThrow("Claude API rate limit: 429");
-    }, 10000);
-
-    it("should use enhanced prompt for V4 models", async () => {
-      const mockResponse = {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              scores: { investment: 80, innovation: 80, team: 80, market: 80 },
-              recommendation: "buy",
-              summary: "Good project",
-              strengths: [],
-              risks: [],
-              questions: [],
-            }),
-          },
-        ],
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
-
-      await service.analyzeRepository(
-        mockRepo,
-        mockReadme,
-        "claude-opus-4-6",
-      );
-
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      const prompt = callBody.messages[0].content;
-
-      // Enhanced prompt should include these elements
-      expect(prompt).toContain("senior venture capital partner");
-      expect(prompt).toContain("technical_moat");
-      expect(prompt).toContain("scalability");
-      expect(prompt).toContain("growth_prediction");
-      expect(prompt).toContain("10000"); // The actual limit used in the code
-    }, 10000);
-
-    it("should use enhanced prompt for Haiku model too", async () => {
-      const mockResponse = {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              scores: { investment: 60, innovation: 60, team: 60, market: 60 },
-              recommendation: "watch",
-              summary: "Decent project",
-              strengths: [],
-              risks: [],
-              questions: [],
-            }),
-          },
-        ],
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
-
-      await service.analyzeRepository(
-        mockRepo,
-        mockReadme,
-        "claude-haiku-4-5-20251001",
-      );
-
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      const prompt = callBody.messages[0].content;
-
-      // All current models use the enhanced prompt
-      expect(prompt).toContain("senior venture capital partner");
-      expect(prompt).toContain("technical_moat");
-    }, 10000);
   });
 
-  describe("parseResponse", () => {
-    it("should handle malformed JSON gracefully", async () => {
-      // Mock the rate limiter to allow the request
-      vi.mock("../utils/rateLimiter", () => ({
-        claudeRateLimiter: {
-          checkLimit: vi.fn().mockResolvedValue(true),
-          getWaitTime: vi.fn().mockReturnValue(0),
-        },
-        withExponentialBackoff: vi.fn((fn) => fn()),
-      }));
+  describe("request shape", () => {
+    it("sends structured output, effort and no temperature", async () => {
+      mockFetch.mockResolvedValueOnce(messageResponse());
 
-      const mockResponse = {
-        content: [
-          {
-            type: "text",
-            text: "This is not JSON",
-          },
-        ],
-      };
+      await service.analyzeRepository(repo, readme, "claude-sonnet-5-5");
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      const { body } = requestAt(mockFetch, 0);
+      expect(body.model).toBe("claude-sonnet-5-5");
+      expect(body.max_tokens).toBe(16000);
+      expect(body).not.toHaveProperty("temperature");
+      expect(body.output_config.effort).toBe("medium");
+      expect(body.output_config.format.type).toBe("json_schema");
+      expect(body.output_config.format.schema.additionalProperties).toBe(false);
+      expect(body.system).toContain("Scoring Guidelines");
+      expect(body.messages[0].content).toContain("test-owner/test-repo");
+      expect(body.messages[0].content).toContain(`<readme>\n${readme}\n</readme>`);
+    });
 
-      const result = await service.analyzeRepository(
-        mockRepo,
-        mockReadme,
-        "claude-opus-4-6",
-      );
-      expect(result.metadata.fallback).toBe(true);
-      expect(result.metadata.error).toBe("No valid JSON in Claude response");
-    }, 10000);
+    it("truncates the README to 10,000 characters", async () => {
+      mockFetch.mockResolvedValueOnce(messageResponse());
 
-    it("should extract JSON from response with extra text", async () => {
-      // Mock the rate limiter to allow the request
-      vi.mock("../utils/rateLimiter", () => ({
-        claudeRateLimiter: {
-          checkLimit: vi.fn().mockResolvedValue(true),
-          getWaitTime: vi.fn().mockReturnValue(0),
-        },
-        withExponentialBackoff: vi.fn((fn) => fn()),
-      }));
+      await service.analyzeRepository(repo, "x".repeat(12000));
 
-      const mockResponse = {
-        content: [
-          {
-            type: "text",
-            text: `Here's the analysis:
-          {
-            "scores": {
-              "investment": 75,
-              "innovation": 80,
-              "team": 70,
-              "market": 78
-            },
-            "recommendation": "buy",
-            "summary": "Good project",
-            "strengths": ["Strong tech"],
-            "risks": ["Competition"],
-            "questions": ["Scaling plan?"]
-          }
-          That's my assessment.`,
-          },
-        ],
-      };
+      const content: string = requestAt(mockFetch, 0).body.messages[0].content;
+      expect(content).toContain(`${"x".repeat(10000)}...\n</readme>`);
+      expect(content).not.toContain("x".repeat(10001));
+    });
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
+    it.each(["claude-opus-5-5", "claude-sonnet-5-5"] as const)(
+      "opts %s into server-side refusal fallback",
+      async (model) => {
+        mockFetch.mockResolvedValueOnce(messageResponse({ model }));
 
-      const result = await service.analyzeRepository(
-        mockRepo,
-        mockReadme,
-        "claude-sonnet-4-6",
+        await service.analyzeRepository(repo, readme, model);
+
+        const { body, headers } = requestAt(mockFetch, 0);
+        expect(body.fallbacks).toBe("default");
+        expect(headers.get("anthropic-beta")).toContain(
+          "server-side-fallback-2026-07-01",
+        );
+      },
+    );
+
+    it("does not send fallbacks for Haiku, which has no server-side fallback", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({ model: "claude-haiku-5-5" }),
       );
 
-      expect(result.scores.investment).toBe(75);
-      expect(result.recommendation).toBe("buy");
-    }, 10000);
+      await service.analyzeRepository(repo, readme, "claude-haiku-5-5");
+
+      const { body, headers } = requestAt(mockFetch, 0);
+      expect(body).not.toHaveProperty("fallbacks");
+      expect(body.output_config.effort).toBe("low");
+      expect(headers.get("anthropic-beta") ?? "").not.toContain(
+        "server-side-fallback",
+      );
+    });
+  });
+
+  describe("failures", () => {
+    it("throws AnalysisRefusedError on a refusal", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({
+          model: "claude-opus-5-5",
+          stopReason: "refusal",
+          stopDetails: { category: "cyber", explanation: null },
+        }),
+      );
+
+      const error = await service
+        .analyzeRepository(repo, readme, "claude-opus-5-5")
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(AnalysisRefusedError);
+      expect(error.category).toBe("cyber");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries a refused Haiku analysis once on Sonnet", async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          messageResponse({
+            model: "claude-haiku-5-5",
+            stopReason: "refusal",
+            stopDetails: { category: "general_harms", explanation: null },
+          }),
+        )
+        .mockResolvedValueOnce(messageResponse({ model: "claude-sonnet-5-5" }));
+
+      const analysis = await service.analyzeRepository(
+        repo,
+        readme,
+        "claude-haiku-5-5",
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(requestAt(mockFetch, 1).body.model).toBe("claude-sonnet-5-5");
+      expect(analysis.metadata.model).toBe("claude-sonnet-5-5");
+    });
+
+    it("throws AnalysisTruncatedError when output hits max_tokens", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({ stopReason: "max_tokens", text: '{"scores": {' }),
+      );
+
+      await expect(service.analyzeRepository(repo, readme)).rejects.toBeInstanceOf(
+        AnalysisTruncatedError,
+      );
+    });
+
+    it("throws AnalysisInvalidError when the output doesn't match the schema", async () => {
+      mockFetch.mockResolvedValueOnce(
+        messageResponse({ text: JSON.stringify({ scores: {} }) }),
+      );
+
+      await expect(service.analyzeRepository(repo, readme)).rejects.toBeInstanceOf(
+        AnalysisInvalidError,
+      );
+    });
+
+    it("retries a 429 and then succeeds", async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(429, "rate limited"))
+        .mockResolvedValueOnce(messageResponse());
+
+      const analysis = await service.analyzeRepository(repo, readme);
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(analysis.scores.investment).toBe(82);
+    });
+
+    it("does not retry a 400", async () => {
+      mockFetch.mockImplementation(async () => errorResponse(400, "bad request"));
+
+      const error = await service.analyzeRepository(repo, readme).catch((e) => e);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(classifyAnalysisError(error)).toEqual({
+        reason: "invalid_request",
+        persistent: true,
+      });
+    });
+  });
+
+  describe("classifyAnalysisError", () => {
+    it("treats refusals, truncation and invalid output as persistent", () => {
+      expect(classifyAnalysisError(new AnalysisRefusedError("bio"))).toEqual({
+        reason: "refused:bio",
+        persistent: true,
+      });
+      expect(classifyAnalysisError(new AnalysisTruncatedError())).toEqual({
+        reason: "truncated",
+        persistent: true,
+      });
+      expect(
+        classifyAnalysisError(new AnalysisInvalidError("x")).persistent,
+      ).toBe(true);
+    });
+
+    it("treats exhausted 5xx retries as transient", async () => {
+      mockFetch.mockImplementation(async () => errorResponse(529, "overloaded"));
+
+      const error = await service.analyzeRepository(repo, readme).catch((e) => e);
+
+      expect(classifyAnalysisError(error)).toEqual({
+        reason: "api_error:529",
+        persistent: false,
+      });
+    });
+
+    it("treats unknown errors as transient", () => {
+      expect(classifyAnalysisError(new Error("network down"))).toEqual({
+        reason: "network down",
+        persistent: false,
+      });
+    });
   });
 });

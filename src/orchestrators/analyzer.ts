@@ -6,6 +6,7 @@ import type {
 import { CONFIG as Config } from "../types";
 import type { GitHubService } from "../services/github";
 import type { ClaudeService } from "../services/claude";
+import { classifyAnalysisError } from "../services/claude";
 import type { StorageService } from "../services/storage";
 import type { StorageEnhancedService } from "../services/storage-enhanced";
 import type { RepoAnalyzer } from "../analyzers/repoAnalyzer";
@@ -51,6 +52,9 @@ export class AnalysisOrchestrator {
   /**
    * Analyze a single repository.
    * Returns the saved analysis, or null if the repo didn't meet the score threshold.
+   * Throws if Claude fails; nothing is saved then, so the repo keeps its
+   * previous analysis. Persistent failures are recorded on the repo so the
+   * batch selection backs off instead of retrying it every run.
    */
   async analyzeRepository(
     repo: Repository,
@@ -80,13 +84,19 @@ export class AnalysisOrchestrator {
       `Using model ${model} for ${repo.full_name} (score: ${score.total}, growth: ${score.growth})`,
     );
 
-    const analysis = await this.deps.claude.analyzeRepository(
-      repo,
-      readme,
-      model,
-    );
+    let analysis: Analysis;
+    try {
+      analysis = await this.deps.claude.analyzeRepository(repo, readme, model);
+    } catch (error) {
+      const { reason, persistent } = classifyAnalysisError(error);
+      if (persistent) {
+        await this.deps.storageEnhanced.recordAnalysisFailure(repo.id, reason);
+      }
+      throw error;
+    }
 
-    await this.deps.storage.saveAnalysis(analysis);
+    await this.deps.storage.saveAnalysis(analysis, repo);
+    await this.deps.storageEnhanced.clearAnalysisFailure(repo.id);
 
     // Generate alert if needed
     if (
@@ -265,7 +275,7 @@ export class AnalysisOrchestrator {
             result.errors.push({
               id: repoData.id,
               name: repoData.full_name,
-              error: error instanceof Error ? error.message : String(error),
+              error: classifyAnalysisError(error).reason,
             });
           }
         }

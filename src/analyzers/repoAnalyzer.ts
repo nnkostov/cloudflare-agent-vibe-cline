@@ -211,26 +211,12 @@ export class RepoAnalyzer extends BaseService {
    * Get recommended Claude model based on score
    */
   getRecommendedModel(score: Score): ClaudeModel {
-    // Use Claude-4 models if enabled
-    if (CONFIG.claude.useClaude4) {
-      // Aggressive Opus-4 usage for high-potential repos
-      if (score.total >= CONFIG.claude.thresholds.high || score.growth >= 80) {
-        return CONFIG.claude.models.high; // claude-opus-4-6
-      } else if (score.total >= CONFIG.claude.thresholds.medium) {
-        return CONFIG.claude.models.medium; // claude-sonnet-4-6
-      }
-      return CONFIG.claude.models.low; // claude-haiku-4-5-20251001
+    if (score.total >= CONFIG.claude.thresholds.high || score.growth >= 80) {
+      return CONFIG.claude.models.high;
     }
-
-    // Fallback (same models, useClaude4 flag is legacy)
-    if (
-      score.total >= ScoringConfig.thresholds.veryHigh ||
-      score.growth >= 90
-    ) {
-      return "claude-opus-4-6";
-    } else if (score.total >= ScoringConfig.thresholds.highPotential) {
-      return "claude-sonnet-4-6";
+    if (score.total >= CONFIG.claude.thresholds.medium) {
+      return CONFIG.claude.models.medium;
     }
-    return "claude-haiku-4-5-20251001";
+    return CONFIG.claude.models.low;
   }
 }

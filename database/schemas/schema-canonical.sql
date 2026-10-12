@@ -59,6 +59,18 @@ CREATE TABLE IF NOT EXISTS analyses (
   model TEXT NOT NULL,
   cost REAL NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- Added by migrations/2026-10-analysis-v2.sql
+  technical_moat_score INTEGER,
+  scalability_score INTEGER,
+  developer_adoption_score INTEGER,
+  growth_prediction TEXT,
+  investment_thesis TEXT,
+  competitive_analysis TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  stars_at_analysis INTEGER, -- repo snapshot at analysis time
+  forks_at_analysis INTEGER,
+  pushed_at_at_analysis TEXT,
   FOREIGN KEY (repo_id) REFERENCES repositories(id)
 );
 
@@ -223,6 +235,10 @@ CREATE TABLE IF NOT EXISTS repo_tiers (
   next_scan_due TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- Added by migrations/2026-10-analysis-v2.sql: last persistent analysis
+  -- failure (refusal, truncation, bad request), for retry backoff
+  last_analysis_attempt_at TEXT,
+  last_analysis_error TEXT,
   FOREIGN KEY (repo_id) REFERENCES repositories(id)
 );
 

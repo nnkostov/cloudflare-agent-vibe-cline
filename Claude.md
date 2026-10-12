@@ -82,14 +82,16 @@ Tests use `@cloudflare/vitest-pool-workers` which runs tests inside the Workers 
 
 ### Claude Model Selection
 
-Score-based tiering in `src/services/claude.ts` and `src/analyzers/repoAnalyzer.ts`:
-- Score >= 70: `claude-opus-4-6` (deep analysis with enhanced prompt)
-- Score 50-69: `claude-sonnet-4-6` (standard analysis)
-- Score < 50: `claude-haiku-4-5-20251001` (quick scan)
+Score-based tiering in `src/analyzers/repoAnalyzer.ts` (`getRecommendedModel`); models, effort, pricing and fallback settings live in `CONFIG.claude` (`src/types/index.ts`):
+- Score >= 70 (or growth >= 80): `claude-opus-5-5`, effort `medium`
+- Score 50-69: `claude-sonnet-5-5`, effort `medium`
+- Score < 50: `claude-haiku-5-5`, effort `low`
+
+`ClaudeService` (`src/services/claude.ts`) calls the API through `@anthropic-ai/sdk` with structured outputs (a JSON schema), so responses are always schema-valid. Opus and Sonnet requests opt into server-side refusal fallback (`fallbacks: "default"`); a refused Haiku analysis is retried once on Sonnet. Do not send `temperature`: the 5.5 models reject it.
 
 ### Database Schema
 
-SQL schemas are in `database/schemas/`. Migrations run via `wrangler d1 execute github-intelligence --file=./database/schemas/schema.sql`.
+The current schema is `database/schemas/schema-canonical.sql`; keep it in sync with production. Incremental migrations live in `database/migrations/` and run with `wrangler d1 execute github-intelligence --remote --file=<migration>` before deploying code that depends on them.
 
 ## Key Patterns
 
@@ -97,7 +99,8 @@ SQL schemas are in `database/schemas/`. Migrations run via `wrangler d1 execute 
 - The worker entry point (`src/index.ts`) proxies most `/api/agent/*` routes to the Durable Object; some routes like `/api/status` and `/api/scan` are handled directly.
 - **Orchestrator pattern**: `GitHubAgent` is a thin Durable Object shell that delegates to `ScanOrchestrator` and `AnalysisOrchestrator`. Orchestrators take service dependencies in their constructor plus callbacks for DO-specific operations (`analyzeRepo`, `saveBatchState`). This keeps business logic testable without the DO runtime.
 - **BatchResult error tracking**: All scan/analysis operations return `BatchResult { total, succeeded, failed, errors[] }` instead of silently swallowing errors. Callers log warnings when `failed > 0`.
-- Claude API responses are parsed from structured text (investment scores, recommendations) — see `parseResponse()` and `parseEnhancedResponse()` in `claude.ts`.
+- A failed analysis (refusal, truncation, API error) throws and is never saved; the repo keeps its previous analysis. `classifyAnalysisError()` in `claude.ts` decides whether the failure is persistent (sets a 24h cooldown on the repo) or transient.
+- Scheduled scans and batches hold heartbeat run locks in Durable Object storage (`src/utils/runLock.ts`), so a run that outlasts its cron interval is never started twice. Scheduling is cron-only.
 - Rate limiting for both GitHub and Claude APIs is handled via utilities in `src/utils/rateLimiter.ts`.
 
 ## Deployment

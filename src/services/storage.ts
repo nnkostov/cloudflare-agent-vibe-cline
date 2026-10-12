@@ -180,25 +180,45 @@ export class StorageService extends BaseService {
   }
 
   // Analysis operations
-  async saveAnalysis(analysis: Analysis): Promise<void> {
+  /**
+   * Save an analysis. `repo` is the repository as it was when analyzed; its
+   * stars, forks and pushed_at are stored so re-analysis can be skipped
+   * until something changes.
+   */
+  async saveAnalysis(analysis: Analysis, repo?: Repository): Promise<void> {
     await this.dbRun(
       `
       INSERT INTO analyses (
         repo_id, investment_score, innovation_score, team_score, market_score,
-        recommendation, summary, strengths, risks, questions, model, cost
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        technical_moat_score, scalability_score, developer_adoption_score,
+        recommendation, summary, strengths, risks, questions,
+        growth_prediction, investment_thesis, competitive_analysis,
+        model, cost, input_tokens, output_tokens,
+        stars_at_analysis, forks_at_analysis, pushed_at_at_analysis
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       analysis.repo_id,
       analysis.scores.investment,
       analysis.scores.innovation,
       analysis.scores.team,
       analysis.scores.market,
+      analysis.scores.technical_moat ?? null,
+      analysis.scores.scalability ?? null,
+      analysis.scores.developer_adoption ?? null,
       analysis.recommendation,
       analysis.summary,
       JSON.stringify(analysis.strengths),
       JSON.stringify(analysis.risks),
       JSON.stringify(analysis.questions),
+      analysis.growth_prediction ?? null,
+      analysis.investment_thesis ?? null,
+      analysis.competitive_analysis ?? null,
       analysis.metadata.model,
       analysis.metadata.cost,
+      analysis.metadata.input_tokens ?? null,
+      analysis.metadata.output_tokens ?? null,
+      repo?.stars ?? null,
+      repo?.forks ?? null,
+      repo?.pushed_at ?? null,
     );
 
     // Archive to R2 (best-effort; D1 record is authoritative)
@@ -709,16 +729,24 @@ export class StorageService extends BaseService {
         innovation: row.innovation_score,
         team: row.team_score,
         market: row.market_score,
+        technical_moat: row.technical_moat_score ?? undefined,
+        scalability: row.scalability_score ?? undefined,
+        developer_adoption: row.developer_adoption_score ?? undefined,
       },
       recommendation: row.recommendation,
       summary: row.summary,
       strengths: JSON.parse(row.strengths || "[]"),
       risks: JSON.parse(row.risks || "[]"),
       questions: JSON.parse(row.questions || "[]"),
+      growth_prediction: row.growth_prediction ?? undefined,
+      investment_thesis: row.investment_thesis ?? undefined,
+      competitive_analysis: row.competitive_analysis ?? undefined,
       metadata: {
         model: row.model,
         cost: row.cost,
         timestamp: row.created_at,
+        input_tokens: row.input_tokens ?? undefined,
+        output_tokens: row.output_tokens ?? undefined,
       },
     };
   }

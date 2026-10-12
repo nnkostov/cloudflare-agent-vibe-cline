@@ -502,6 +502,9 @@ export class StorageEnhancedService extends BaseService {
       ) a ON r.id = a.repo_id
       WHERE r.is_archived = 0 AND r.is_fork = 0
         AND (${tierConditions.join(" OR ")})
+        -- Back off repos whose last analysis failed persistently (refusal etc.)
+        AND (rt.last_analysis_attempt_at IS NULL
+             OR rt.last_analysis_attempt_at < datetime('now', '-24 hours'))
         ${targetFilter}
       ORDER BY rt.tier ASC, r.stars DESC
       LIMIT 200
@@ -509,6 +512,30 @@ export class StorageEnhancedService extends BaseService {
 
     const results = await this.env.DB.prepare(query).all();
     return (results.results || []) as any[];
+  }
+
+  /**
+   * Record a persistent analysis failure (refusal, truncation, bad request)
+   * so batch selection skips the repo for a cooldown period.
+   */
+  async recordAnalysisFailure(repoId: string, reason: string): Promise<void> {
+    await this.dbRun(
+      `UPDATE repo_tiers
+       SET last_analysis_attempt_at = CURRENT_TIMESTAMP, last_analysis_error = ?
+       WHERE repo_id = ?`,
+      reason,
+      repoId,
+    );
+  }
+
+  /** Clear a recorded analysis failure after a successful analysis. */
+  async clearAnalysisFailure(repoId: string): Promise<void> {
+    await this.dbRun(
+      `UPDATE repo_tiers
+       SET last_analysis_attempt_at = NULL, last_analysis_error = NULL
+       WHERE repo_id = ? AND last_analysis_error IS NOT NULL`,
+      repoId,
+    );
   }
 
   /**

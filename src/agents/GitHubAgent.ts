@@ -1,4 +1,4 @@
-import type { Env, Repository, BatchResult } from "../types";
+import type { Env, Repository, BatchResult, Analysis } from "../types";
 import { CONFIG as Config } from "../types";
 import { GitHubService } from "../services/github";
 import { GitHubEnhancedService } from "../services/github-enhanced";
@@ -104,25 +104,28 @@ export class GitHubAgent {
     });
   }
 
-  private transformAnalysisForFrontend(analysis: any): any {
+  private transformAnalysisForFrontend(analysis: Analysis | null): any {
     if (!analysis) return null;
     return {
       repo_id: analysis.repo_id,
-      investment_score: analysis.scores?.investment || 0,
-      innovation_score: analysis.scores?.innovation || 0,
-      team_score: analysis.scores?.team || 0,
-      market_score: analysis.scores?.market || 0,
-      analyzed_at: analysis.metadata?.timestamp || analysis.created_at,
+      investment_score: analysis.scores.investment || 0,
+      innovation_score: analysis.scores.innovation || 0,
+      team_score: analysis.scores.team || 0,
+      market_score: analysis.scores.market || 0,
+      technical_moat_score: analysis.scores.technical_moat,
+      scalability_score: analysis.scores.scalability,
+      developer_adoption_score: analysis.scores.developer_adoption,
+      analyzed_at: analysis.metadata.timestamp,
       recommendation: analysis.recommendation,
       summary: analysis.summary,
       strengths: analysis.strengths,
       risks: analysis.risks,
-      questions: analysis.questions,
-      technical_moat: analysis.scores?.technical_moat,
-      scalability: analysis.scores?.scalability,
-      growth_prediction: analysis.scores?.growth_prediction,
-      model_used: analysis.metadata?.model,
-      cost: analysis.metadata?.cost,
+      key_questions: analysis.questions,
+      growth_prediction: analysis.growth_prediction,
+      investment_thesis: analysis.investment_thesis,
+      competitive_analysis: analysis.competitive_analysis,
+      model_used: analysis.metadata.model,
+      cost: analysis.metadata.cost,
     };
   }
 
