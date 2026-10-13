@@ -136,8 +136,8 @@ export interface Contributor {
 
 // Analysis types
 export type ClaudeModel =
-  | "claude-opus-5-5" // deep analysis for the highest-scoring repos
-  | "claude-sonnet-5-5" // standard analysis
+  | "claude-opus-5-5" // not in rotation (cost); kept so it can be switched back on
+  | "claude-sonnet-5-5" // high- and medium-scoring repos
   | "claude-haiku-5-5"; // quick scan for the long tail
 
 export type ClaudeEffort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -247,7 +247,9 @@ export const CONFIG = {
   },
   claude: {
     models: {
-      high: "claude-opus-5-5" as ClaudeModel,
+      // Sonnet rather than Opus for the high tier: ~45% cheaper per
+      // analysis. Set back to "claude-opus-5-5" for deeper top-tier analysis.
+      high: "claude-sonnet-5-5" as ClaudeModel,
       medium: "claude-sonnet-5-5" as ClaudeModel,
       low: "claude-haiku-5-5" as ClaudeModel,
     },

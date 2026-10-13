@@ -105,7 +105,7 @@ describe("Claude analysis integration", () => {
   });
 
   it.each([
-    ["high-scoring", highScoringRepo, "claude-opus-5-5", "medium"],
+    ["high-scoring", highScoringRepo, "claude-sonnet-5-5", "medium"],
     ["medium-scoring", mediumScoringRepo, "claude-sonnet-5-5", "medium"],
     ["low-scoring", lowScoringRepo, "claude-haiku-5-5", "low"],
   ] as const)(
@@ -132,21 +132,21 @@ describe("Claude analysis integration", () => {
   );
 
   it("records the fallback model when a refusal is served by another model", async () => {
-    mockFetch.mockResolvedValueOnce(messageResponse({ model: "claude-opus-5" }));
+    mockFetch.mockResolvedValueOnce(messageResponse({ model: "claude-sonnet-5" }));
 
     const analysis = await claudeService.analyzeRepository(
       highScoringRepo,
       "# README",
-      "claude-opus-5-5",
+      "claude-sonnet-5-5",
     );
 
-    expect(analysis.metadata.model).toBe("claude-opus-5");
+    expect(analysis.metadata.model).toBe("claude-sonnet-5");
   });
 
-  it("uses the high model for high growth even with a lower total score", async () => {
+  it("uses the high-tier model for high growth even with a lower total score", async () => {
     const score = await repoAnalyzer.analyze(rapidGrowthRepo);
 
     expect(score.growth).toBeGreaterThanOrEqual(80);
-    expect(repoAnalyzer.getRecommendedModel(score)).toBe("claude-opus-5-5");
+    expect(repoAnalyzer.getRecommendedModel(score)).toBe("claude-sonnet-5-5");
   });
 });

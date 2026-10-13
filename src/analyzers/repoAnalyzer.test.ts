@@ -36,15 +36,15 @@ describe("RepoAnalyzer", () => {
   });
 
   describe("getRecommendedModel", () => {
-    it("should return claude-opus-5-5 for high-scoring repositories", async () => {
+    it("should return the high-tier model (Sonnet) for high-scoring repositories", async () => {
       const repo = createMockRepo({ stars: 10000, forks: 2000 });
       const score = await analyzer.analyze(repo);
 
       const model = analyzer.getRecommendedModel(score);
-      expect(model).toBe("claude-opus-5-5");
+      expect(model).toBe("claude-sonnet-5-5");
     });
 
-    it("should return claude-opus-5-5 for score exactly 70", async () => {
+    it("should return the high-tier model (Sonnet) for score exactly 70", async () => {
       // Create a repo that will score around 70
       const repo = createMockRepo({
         stars: 3000,
@@ -58,7 +58,7 @@ describe("RepoAnalyzer", () => {
       // Verify the score is around 70
       expect(score.total).toBeGreaterThanOrEqual(68);
       expect(score.total).toBeLessThanOrEqual(72);
-      expect(model).toBe("claude-opus-5-5");
+      expect(model).toBe("claude-sonnet-5-5");
     });
 
     it("should return claude-sonnet-5-5 for medium-scoring repositories", async () => {
@@ -102,7 +102,7 @@ describe("RepoAnalyzer", () => {
       expect(model).toBe("claude-haiku-5-5");
     });
 
-    it("should return claude-opus-5-5 for high growth score regardless of total score", async () => {
+    it("should return the high-tier model (Sonnet) for high growth score regardless of total score", async () => {
       const repo = createMockRepo({
         stars: 2000,
         forks: 400,
@@ -115,7 +115,7 @@ describe("RepoAnalyzer", () => {
       const model = analyzer.getRecommendedModel(score);
 
       expect(score.growth).toBeGreaterThanOrEqual(80);
-      expect(model).toBe("claude-opus-5-5");
+      expect(model).toBe("claude-sonnet-5-5");
     });
   });
 

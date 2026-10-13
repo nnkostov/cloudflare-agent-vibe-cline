@@ -83,8 +83,7 @@ Tests use `@cloudflare/vitest-pool-workers` which runs tests inside the Workers 
 ### Claude Model Selection
 
 Score-based tiering in `src/analyzers/repoAnalyzer.ts` (`getRecommendedModel`); models, effort, pricing and fallback settings live in `CONFIG.claude` (`src/types/index.ts`):
-- Score >= 70 (or growth >= 80): `claude-opus-5-5`, effort `medium`
-- Score 50-69: `claude-sonnet-5-5`, effort `medium`
+- Score >= 50 (high tier: score >= 70 or growth >= 80; medium tier: 50-69): `claude-sonnet-5-5`, effort `medium`. Opus was taken out of rotation for cost in Oct 2026; set `CONFIG.claude.models.high` back to `claude-opus-5-5` to restore it.
 - Score < 50: `claude-haiku-5-5`, effort `low`
 
 `ClaudeService` (`src/services/claude.ts`) calls the API through `@anthropic-ai/sdk` with structured outputs (a JSON schema), so responses are always schema-valid. Opus and Sonnet requests opt into server-side refusal fallback (`fallbacks: "default"`); a refused Haiku analysis is retried once on Sonnet. Do not send `temperature`: the 5.5 models reject it.
