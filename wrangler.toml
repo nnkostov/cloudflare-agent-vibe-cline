@@ -38,9 +38,9 @@ vars = { ENVIRONMENT = "development" }
 # Cron triggers for automated scanning
 [triggers]
 crons = [
-  "0 * * * *",         # Hourly: scan only (discover repos, update metrics)
-  "15,45 * * * *",     # Every 30 min (offset): analysis-only batch runs
-  "0 2,14 * * *"       # Twice daily at 2 AM and 2 PM: full sweep (scan + analysis)
+  "0 0,1,3-13,15-23 * * *",  # Hourly scan only (skips 02:00/14:00, covered by the full sweep)
+  "15,45 * * * *",           # Every 30 min (offset): analysis-only batch runs
+  "0 2,14 * * *"             # Twice daily at 2 AM and 2 PM: full sweep (scan + analysis)
 ]
 
 # Observability configuration

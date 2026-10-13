@@ -85,9 +85,6 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
     analyzeWithMetrics: vi.fn().mockResolvedValue({ total: 75 }),
     calculateGrowthVelocity: vi.fn().mockReturnValue(5),
     calculateEngagementScoreForTier: vi.fn().mockReturnValue(50),
-
-    // analyzeRepo callback
-    analyzeRepo: vi.fn().mockResolvedValue(null),
   };
 
   const deps: ScanDeps = {
@@ -129,7 +126,6 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
       calculateGrowthVelocity: mocks.calculateGrowthVelocity,
       calculateEngagementScoreForTier: mocks.calculateEngagementScoreForTier,
     } as any,
-    analyzeRepo: mocks.analyzeRepo,
   };
 
   return { deps, mocks };
@@ -199,27 +195,23 @@ describe("ScanOrchestrator", () => {
   });
 
   describe("processTier1Repos", () => {
-    it("should call analyzeRepo for every Tier 1 repo", async () => {
+    it("should refresh every Tier 1 repo from GitHub", async () => {
       mocks.getReposNeedingScan.mockResolvedValue(["r1", "r2"]);
 
-      await scanner.processTier1Repos();
+      const result = await scanner.processTier1Repos();
 
-      expect(mocks.analyzeRepo).toHaveBeenCalledTimes(2);
-      // Each call should pass force=true
-      for (const call of mocks.analyzeRepo.mock.calls) {
-        expect(call[1]).toBe(true);
-      }
+      expect(mocks.getRepoDetails).toHaveBeenCalledTimes(2);
+      expect(result.succeeded).toBe(2);
     });
 
     it("should return BatchResult with correct counts when some fail", async () => {
       mocks.getReposNeedingScan.mockResolvedValue(["ok", "fail"]);
 
-      let callCount = 0;
-      mocks.analyzeRepo.mockImplementation(() => {
-        callCount++;
-        if (callCount === 2) return Promise.reject(new Error("Claude timeout"));
-        return Promise.resolve(null);
-      });
+      mocks.markRepoScanned.mockImplementation((id: string) =>
+        id === "fail"
+          ? Promise.reject(new Error("D1 timeout"))
+          : Promise.resolve(undefined),
+      );
 
       const result = await scanner.processTier1Repos();
 
@@ -227,18 +219,17 @@ describe("ScanOrchestrator", () => {
       expect(result.succeeded).toBe(1);
       expect(result.failed).toBe(1);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].error).toContain("Claude timeout");
+      expect(result.errors[0].error).toContain("D1 timeout");
     });
 
     it("should not abort batch when individual repo fails", async () => {
       mocks.getReposNeedingScan.mockResolvedValue(["fail", "ok1", "ok2"]);
 
-      let callCount = 0;
-      mocks.analyzeRepo.mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) return Promise.reject(new Error("transient"));
-        return Promise.resolve(null);
-      });
+      mocks.markRepoScanned.mockImplementation((id: string) =>
+        id === "fail"
+          ? Promise.reject(new Error("transient"))
+          : Promise.resolve(undefined),
+      );
 
       const result = await scanner.processTier1Repos();
 

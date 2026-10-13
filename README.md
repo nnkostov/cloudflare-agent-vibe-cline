@@ -344,7 +344,6 @@ For each analyzed repository, investors receive:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/agent/init` | POST | Initialize automated scanning |
 | `/api/status` | GET | System health and metrics |
 | `/api/scan` | POST | Trigger manual repository scan |
 | `/api/analyze` | POST | Analyze specific repository |
@@ -519,12 +518,9 @@ npm run deploy
 # Your agent is now live! 🎉
 ```
 
-### 6️⃣ Initialize the Agent
+### 6️⃣ Scheduling
 
-```bash
-# Start automated scanning
-curl -X POST https://your-worker.workers.dev/api/agent/init
-```
+Scanning and analysis run automatically from the cron triggers in `wrangler.toml`; there is nothing to initialize.
 
 ## 📜 License
 

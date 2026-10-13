@@ -255,11 +255,13 @@ export class LogsService extends BaseService {
         }
       }
 
-      // Estimate costs (example rates)
-      const estimatedCost =
-        claudeOpus * 0.015 + // $15 per 1M tokens (estimate)
-        claudeSonnet * 0.003 + // $3 per 1M tokens (estimate)
-        claudeHaiku * 0.00025; // $0.25 per 1M tokens (estimate)
+      // Actual spend: each analysis stores its cost from real token usage
+      const costRow = await this.env.DB.prepare(
+        `SELECT COALESCE(SUM(cost), 0) AS total FROM analyses WHERE created_at >= datetime(?)`,
+      )
+        .bind(since)
+        .first<{ total: number }>();
+      const estimatedCost = costRow?.total ?? 0;
 
       return {
         github: {

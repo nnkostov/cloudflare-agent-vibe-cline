@@ -342,25 +342,6 @@ export class RepoAnalyzerEnhanced extends BaseService {
   }
 
   /**
-   * Determine if repository is high potential based on enhanced score
-   */
-  isHighPotential(score: Score): boolean {
-    return score.total >= SCORING.thresholds.highPotential;
-  }
-
-  /**
-   * Get recommended analysis model based on enhanced score
-   */
-  getRecommendedModel(score: Score): string {
-    if (score.total >= SCORING.thresholds.veryHigh || score.growth >= 90) {
-      return "high";
-    } else if (score.total >= SCORING.thresholds.highPotential) {
-      return "medium";
-    }
-    return "low";
-  }
-
-  /**
    * Calculate growth velocity for tier assignment
    */
   calculateGrowthVelocity(

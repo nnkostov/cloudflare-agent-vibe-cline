@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clock, BarChart3, Target } from 'lucide-react';
+import { RefreshCw, AlertCircle, CheckCircle, Zap, Sparkles, Settings, Clock, BarChart3, Target } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BatchProgress } from '@/components/ui/BatchProgress';
@@ -53,23 +53,6 @@ export default function Controls() {
     queryFn: api.getAnalysisStats,
     refetchInterval: activeBatchId !== null ? 3000 : 30000, // 3s when batch active, 30s otherwise
     retry: 1,
-  });
-
-  const initAgentMutation = useMutation({
-    mutationFn: api.initializeAgent,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['status'] });
-      setStatusMessage({ 
-        type: 'success', 
-        message: `Agent initialized! Next run scheduled for ${new Date(data.nextRun).toLocaleString()}` 
-      });
-    },
-    onError: (error) => {
-      setStatusMessage({ 
-        type: 'error', 
-        message: `Failed to initialize agent: ${error.message}` 
-      });
-    },
   });
 
   const scanMutation = useMutation({
@@ -265,18 +248,11 @@ export default function Controls() {
                 {status?.status === 'ok' ? 'Active' : 'Inactive'}
               </p>
             </div>
-            <button
-              onClick={() => initAgentMutation.mutate()}
-              disabled={initAgentMutation.isPending}
-              className="flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
-            >
-              {initAgentMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              Initialize Agent
-            </button>
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-right">
+              Runs on a schedule: scans hourly,
+              <br />
+              analysis every 30 minutes
+            </p>
           </div>
         </CardContent>
       </Card>

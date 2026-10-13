@@ -9,6 +9,15 @@ import {
 } from "../utils/rateLimiter";
 import { BaseService } from "./base";
 
+/**
+ * Decode base64 text as UTF-8. atob alone yields one char per byte, which
+ * garbles non-ASCII content such as Chinese READMEs.
+ */
+export function decodeBase64Utf8(base64: string): string {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 export class GitHubService extends BaseService {
   private get octokit(): Octokit {
     return new Octokit({ auth: this.env.GITHUB_TOKEN });
@@ -321,9 +330,7 @@ export class GitHubService extends BaseService {
             repo: name,
           });
 
-          // Decode base64 content using Web API
-          const content = atob(response.data.content);
-          return content;
+          return decodeBase64Utf8(response.data.content);
         } catch (error) {
           console.error(`Error getting README for ${owner}/${name}:`, error);
           return "";

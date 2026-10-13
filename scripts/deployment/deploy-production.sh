@@ -33,10 +33,7 @@ if [ $? -eq 0 ]; then
     echo "2. Check API status:"
     echo "   curl https://github-ai-intelligence.nkostov.workers.dev/api/status"
     echo ""
-    echo "3. Initialize the agent (if not already done):"
-    echo "   curl -X POST https://github-ai-intelligence.nkostov.workers.dev/api/agent/init"
-    echo ""
-    echo "4. Monitor logs:"
+    echo "3. Monitor logs:"
     echo "   npx wrangler tail"
 else
     echo "❌ Deployment failed. Check the error messages above."

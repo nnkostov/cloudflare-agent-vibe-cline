@@ -12,17 +12,32 @@ interface AnalysisData {
   innovation_score: number;
   team_score: number;
   market_score: number;
-  recommendation: 'strong_buy' | 'buy' | 'hold' | 'pass';
+  recommendation: 'strong-buy' | 'buy' | 'watch' | 'pass';
   summary: string;
   strengths: string[];
   risks: string[];
   key_questions: string[];
   model_used: string;
   analyzed_at: string;
-  technical_moat?: string;
-  scalability_assessment?: string;
-  developer_adoption_potential?: string;
+  // Extended analysis; absent on analyses saved before Oct 2026
+  technical_moat_score?: number;
+  scalability_score?: number;
+  developer_adoption_score?: number;
   growth_prediction?: string;
+  investment_thesis?: string;
+  competitive_analysis?: string;
+}
+
+function Paragraphs({ text }: { text: string }) {
+  return (
+    <div className="space-y-3">
+      {text.split(/\n\s*\n/).map((paragraph, index) => (
+        <p key={index} className="text-gray-700 dark:text-gray-300 leading-relaxed">
+          {paragraph}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 export default function Analysis() {
@@ -418,6 +433,40 @@ export default function Analysis() {
         </Card>
       </div>
 
+      {/* Extended Scores */}
+      {analysis.technical_moat_score !== undefined && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { label: 'Technical Moat', value: analysis.technical_moat_score },
+            { label: 'Scalability', value: analysis.scalability_score },
+            { label: 'Developer Adoption', value: analysis.developer_adoption_score },
+          ].map(({ label, value }) => (
+            <Card key={label}>
+              <CardContent className="p-6">
+                <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
+                  {label}
+                </h3>
+                <p className={`text-3xl font-bold ${getScoreColor(value ?? 0)}`}>
+                  {value ?? '–'}/100
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Executive Summary */}
+      {analysis.summary && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Executive Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Paragraphs text={analysis.summary} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Repository Description */}
       <Card>
         <CardHeader>
@@ -490,46 +539,23 @@ export default function Analysis() {
         </Card>
       )}
 
-      {/* Enhanced Analysis (if available) */}
-      {analysis.technical_moat && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Enhanced Analysis</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-white mb-1">Technical Moat</h4>
-              <p className="text-gray-700 dark:text-gray-300">{analysis.technical_moat}</p>
-            </div>
-            {analysis.scalability_assessment && (
-              <div>
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-                  Scalability Assessment
-                </h4>
-                <p className="text-gray-700 dark:text-gray-300">{analysis.scalability_assessment}</p>
-              </div>
-            )}
-            {analysis.developer_adoption_potential && (
-              <div>
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-                  Developer Adoption Potential
-                </h4>
-                <p className="text-gray-700 dark:text-gray-300">
-                  {analysis.developer_adoption_potential}
-                </p>
-              </div>
-            )}
-            {analysis.growth_prediction && (
-              <div>
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-                  Growth Prediction
-                </h4>
-                <p className="text-gray-700 dark:text-gray-300">{analysis.growth_prediction}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Extended analysis sections (absent on older analyses) */}
+      {[
+        { title: 'Investment Thesis', text: analysis.investment_thesis },
+        { title: 'Competitive Analysis', text: analysis.competitive_analysis },
+        { title: 'Growth Prediction', text: analysis.growth_prediction },
+      ]
+        .filter((section): section is { title: string; text: string } => !!section.text)
+        .map(({ title, text }) => (
+          <Card key={title}>
+            <CardHeader>
+              <CardTitle>{title}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Paragraphs text={text} />
+            </CardContent>
+          </Card>
+        ))}
 
       {/* Model Info */}
       <Card>

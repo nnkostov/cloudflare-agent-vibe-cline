@@ -1,5 +1,6 @@
 import type { Env, Repository } from "./types";
 import { BaseService } from "./services/base";
+import { StorageEnhancedService } from "./services/storage-enhanced";
 import { PerformanceMonitor } from "./utils/performanceMonitor";
 import { getAssetFromKV } from "@cloudflare/kv-asset-handler";
 
@@ -37,6 +38,8 @@ export default {
 // @ts-ignore
 import manifestJSON from "__STATIC_CONTENT_MANIFEST";
 const assetManifest = JSON.parse(manifestJSON);
+
+const INTERNAL_AGENT_PATHS = new Set(["/scheduled", "/init"]);
 
 class WorkerService extends BaseService {
   private corsHeaders = {
@@ -198,7 +201,6 @@ class WorkerService extends BaseService {
       "/alerts": () => this.handleAlerts(),
       "/reports/daily": () => this.handleDailyReport(),
       "/reports/enhanced": () => this.handleEnhancedReport(),
-      "/agent/init": () => this.handleAgentInit(),
       "/status": () => this.handleStatus(),
       "/diagnostics/data-freshness": () => this.handleDataFreshness(),
       "/diagnostics/scan-history": () => this.handleScanHistory(),
@@ -226,6 +228,12 @@ class WorkerService extends BaseService {
     const handler = directHandlers[agentPath];
     if (handler) {
       return handler();
+    }
+
+    // Internal Durable Object routes are only for the cron handler, which
+    // calls the DO directly; never expose them through the public API.
+    if (INTERNAL_AGENT_PATHS.has(agentPath)) {
+      return new Response("Not found", { status: 404 });
     }
 
     // Forward to Durable Object
@@ -478,9 +486,6 @@ class WorkerService extends BaseService {
         return this.jsonResponse({ error: "repo_id required" }, 400);
       }
 
-      const { StorageEnhancedService } = await import(
-        "./services/storage-enhanced"
-      );
       const storage = new StorageEnhancedService(this.env);
       const metrics = await storage.getComprehensiveMetrics(repoId);
 
@@ -809,34 +814,6 @@ class WorkerService extends BaseService {
     });
   }
 
-  private async handleAgentInit(): Promise<Response> {
-    return this.handleError(async () => {
-      // Forward the initialization request to the Durable Object
-      const id = this.env.GITHUB_AGENT.idFromName("main");
-      const agent = this.env.GITHUB_AGENT.get(id);
-
-      // Call the Durable Object's init endpoint
-      const initResponse = await agent.fetch(
-        new Request("http://internal/init", {
-          method: "POST",
-        }),
-      );
-
-      if (!initResponse.ok) {
-        const error = await initResponse.text();
-        throw new Error(`Failed to initialize agent: ${error}`);
-      }
-
-      const result = (await initResponse.json()) as any;
-
-      return this.jsonResponse({
-        message: "Agent initialized successfully",
-        nextRun: result.nextRun,
-        status: "ready",
-      });
-    }, "initialize agent");
-  }
-
   private async handleStatus(): Promise<Response> {
     return this.handleError(async () => {
       // Import rate limiters and CONFIG
@@ -1128,54 +1105,14 @@ class WorkerService extends BaseService {
         `Starting batch analysis for ${target} repositories... Force: ${force}, ChunkSize: ${chunkSize}, StartIndex: ${startIndex}`,
       );
 
-      // Build SQL query to find repositories needing analysis based on tier thresholds
-      let tierConditions = [];
-      if (force) {
-        // Force mode: tighter thresholds (1/3/5 days)
-        tierConditions = [
-          `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-24 hours')))`,
-          `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
-          `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
-        ];
-      } else {
-        // Normal mode: standard thresholds (3/5/7 days)
-        tierConditions = [
-          `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
-          `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
-          `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
-        ];
-      }
-
-      // Add target filtering
-      let targetFilter = "";
-      if (target === "tier1") {
-        targetFilter = " AND rt.tier = 1";
-      } else if (target === "tier2") {
-        targetFilter = " AND rt.tier = 2";
-      } else if (target === "tier3") {
-        targetFilter = " AND rt.tier = 3";
-      }
-
-      // Get repository IDs that need analysis using efficient SQL
-      const needingAnalysisQuery = `
-        SELECT DISTINCT r.id, r.full_name, r.owner, r.name, rt.tier, r.stars
-        FROM repositories r
-        JOIN repo_tiers rt ON r.id = rt.repo_id
-        LEFT JOIN (
-          SELECT repo_id, MAX(created_at) as created_at
-          FROM analyses
-          GROUP BY repo_id
-        ) a ON r.id = a.repo_id
-        WHERE r.is_archived = 0 AND r.is_fork = 0
-          AND (${tierConditions.join(" OR ")})
-          ${targetFilter}
-        ORDER BY rt.tier ASC, r.stars DESC
-        LIMIT 100
-      `;
-
-      const needingAnalysisResults =
-        await this.env.DB.prepare(needingAnalysisQuery).all();
-      const reposNeedingAnalysis = needingAnalysisResults.results || [];
+      // Same selection rules as the scheduled batch (change-driven, with
+      // per-tier maximum age); force uses shorter fixed windows instead.
+      const tierTarget = ["tier1", "tier2", "tier3"].includes(target)
+        ? (target as "tier1" | "tier2" | "tier3")
+        : "all";
+      const reposNeedingAnalysis = await new StorageEnhancedService(
+        this.env,
+      ).getReposNeedingAnalysis(tierTarget, force, 100);
 
       console.log(
         `Found ${reposNeedingAnalysis.length} repositories needing analysis (force: ${force})`,

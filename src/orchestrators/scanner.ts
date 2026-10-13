@@ -1,4 +1,4 @@
-import type { Repository, Analysis, BatchResult } from "../types";
+import type { Repository, BatchResult } from "../types";
 import { CONFIG as Config } from "../types";
 import { isStale } from "../utils/isStale";
 import type { GitHubService } from "../services/github";
@@ -13,7 +13,6 @@ export interface ScanDeps {
   storage: StorageService;
   storageEnhanced: StorageEnhancedService;
   analyzerEnhanced: RepoAnalyzerEnhanced;
-  analyzeRepo: (repo: Repository, force: boolean) => Promise<Analysis | null>;
 }
 
 function mergeBatchResults(...results: BatchResult[]): BatchResult {
@@ -301,9 +300,8 @@ export class ScanOrchestrator {
           });
 
           await this.deps.storageEnhanced.markRepoScanned(repoId, "deep");
-
-          // All Tier 1 ("hot prospects") repos get Claude analysis
-          await this.deps.analyzeRepo(repo, true);
+          // Claude analysis is scheduled separately by AnalysisOrchestrator.runBatch,
+          // which re-analyzes only when the repo has changed.
 
           result.succeeded++;
 

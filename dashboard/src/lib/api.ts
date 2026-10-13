@@ -219,17 +219,6 @@ class ApiClient {
     });
   }
 
-  // Agent initialization
-  initializeAgent = async () => {
-    return this.request<{
-      message: string;
-      nextRun: string;
-      status: string;
-    }>('/agent/init', {
-      method: 'POST',
-    });
-  }
-
   // Batch analysis - now supports chunked processing
   triggerBatchAnalysis = async (
     target: 'visible' | 'tier1' | 'tier2' | 'all' = 'visible', 

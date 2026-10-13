@@ -1,6 +1,6 @@
 {
   "name": "github-ai-intelligence-agent",
-  "version": "1.8",
+  "version": "1.11",
   "description": "AI-powered GitHub repository intelligence agent for VC investment opportunities",
   "main": "src/index.ts",
   "scripts": {
@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@cloudflare/kv-asset-handler": "^0.4.0",
     "@cloudflare/workers-types": "^4.20241205.0",
     "@miniflare/d1": "^2.14.4",
@@ -34,7 +35,7 @@
     "prettier": "^3.0.0",
     "typescript": "^5.3.3",
     "vitest": "^3.2.4",
-    "wrangler": "^4.81.1"
+    "wrangler": "^4.82.2"
   },
   "engines": {
     "node": ">=18.0.0"

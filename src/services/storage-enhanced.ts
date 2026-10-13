@@ -466,12 +466,22 @@ export class StorageEnhancedService extends BaseService {
   }
 
   /**
-   * Get repositories that need analysis based on tier-specific staleness thresholds.
-   * Moved from GitHubAgent to keep all D1 queries in the service layer.
+   * Get repositories due for analysis.
+   *
+   * A repo is due when it was never analyzed; or its latest analysis is past
+   * the tier's maximum age; or it is past the tier's minimum age and the
+   * repo changed since that analysis (stars or forks up >=10% by a minimum
+   * absolute amount, a newer push, or no snapshot to compare against).
+   * Repos with a persistent analysis failure in the last 24h are skipped.
+   * Ordered never-analyzed, then changed, then over max age.
+   *
+   * `force` (manual dashboard re-analysis) ignores change detection and
+   * uses shorter fixed windows.
    */
   async getReposNeedingAnalysis(
     target: "all" | "tier1" | "tier2" | "tier3" = "all",
     force: boolean = false,
+    limit: number = 200,
   ): Promise<
     Array<{
       id: string;
@@ -482,44 +492,72 @@ export class StorageEnhancedService extends BaseService {
       stars: number;
     }>
   > {
-    let tierConditions: string[];
-    if (force) {
-      tierConditions = [
-        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-24 hours')))`,
-        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
-        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
-      ];
-    } else {
-      tierConditions = [
-        `(rt.tier = 1 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-72 hours')))`,
-        `(rt.tier = 2 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-120 hours')))`,
-        `(rt.tier = 3 AND (a.created_at IS NULL OR a.created_at < datetime('now', '-168 hours')))`,
-      ];
-    }
+    const tierFilter =
+      target === "all" ? "" : `AND rt.tier = ${Number(target.slice(-1))}`;
+    const window = (hours: [number, number, number]) =>
+      `datetime('now', CASE rt.tier WHEN 1 THEN '-${hours[0]} hours' WHEN 2 THEN '-${hours[1]} hours' ELSE '-${hours[2]} hours' END)`;
 
-    let targetFilter = "";
-    if (target === "tier1") targetFilter = " AND rt.tier = 1";
-    if (target === "tier2") targetFilter = " AND rt.tier = 2";
-    if (target === "tier3") targetFilter = " AND rt.tier = 3";
+    const minAge = window(force ? [24, 72, 120] : [72, 120, 168]);
+    const maxAge = window([7 * 24, 14 * 24, 30 * 24]);
+    const changed = force
+      ? "1"
+      : `(a.stars_at_analysis IS NULL
+          OR (r.stars - a.stars_at_analysis >= 25 AND r.stars >= a.stars_at_analysis * 1.1)
+          OR (r.forks - a.forks_at_analysis >= 10 AND r.forks >= a.forks_at_analysis * 1.1)
+          OR r.pushed_at > a.pushed_at_at_analysis)`;
 
     const query = `
-      SELECT DISTINCT r.id, r.full_name, r.owner, r.name, rt.tier, r.stars
-      FROM repositories r
-      JOIN repo_tiers rt ON r.id = rt.repo_id
-      LEFT JOIN (
-        SELECT repo_id, MAX(created_at) as created_at
-        FROM analyses
-        GROUP BY repo_id
-      ) a ON r.id = a.repo_id
-      WHERE r.is_archived = 0 AND r.is_fork = 0
-        AND (${tierConditions.join(" OR ")})
-        ${targetFilter}
-      ORDER BY rt.tier ASC, r.stars DESC
-      LIMIT 200
+      SELECT id, full_name, owner, name, tier, stars FROM (
+        SELECT r.id, r.full_name, r.owner, r.name, rt.tier, r.stars,
+          CASE
+            WHEN a.created_at IS NULL THEN 0
+            WHEN a.created_at < ${minAge} AND ${changed} THEN 1
+            WHEN a.created_at < ${maxAge} THEN 2
+          END AS priority
+        FROM repositories r
+        JOIN repo_tiers rt ON rt.repo_id = r.id
+        LEFT JOIN analyses a ON a.id = (
+          SELECT id FROM analyses
+          WHERE repo_id = r.id
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        )
+        WHERE r.is_archived = 0 AND r.is_fork = 0
+          AND (rt.last_analysis_attempt_at IS NULL
+               OR rt.last_analysis_attempt_at < datetime('now', '-24 hours'))
+          ${tierFilter}
+      )
+      WHERE priority IS NOT NULL
+      ORDER BY priority, tier, stars DESC
+      LIMIT ?
     `;
 
-    const results = await this.env.DB.prepare(query).all();
+    const results = await this.env.DB.prepare(query).bind(limit).all();
     return (results.results || []) as any[];
+  }
+
+  /**
+   * Record a persistent analysis failure (refusal, truncation, bad request)
+   * so batch selection skips the repo for a cooldown period.
+   */
+  async recordAnalysisFailure(repoId: string, reason: string): Promise<void> {
+    await this.dbRun(
+      `UPDATE repo_tiers
+       SET last_analysis_attempt_at = CURRENT_TIMESTAMP, last_analysis_error = ?
+       WHERE repo_id = ?`,
+      reason,
+      repoId,
+    );
+  }
+
+  /** Clear a recorded analysis failure after a successful analysis. */
+  async clearAnalysisFailure(repoId: string): Promise<void> {
+    await this.dbRun(
+      `UPDATE repo_tiers
+       SET last_analysis_attempt_at = NULL, last_analysis_error = NULL
+       WHERE repo_id = ? AND last_analysis_error IS NOT NULL`,
+      repoId,
+    );
   }
 
   /**

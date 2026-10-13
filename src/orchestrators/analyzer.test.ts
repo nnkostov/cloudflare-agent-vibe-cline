@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AnalysisOrchestrator } from "./analyzer";
 import type { AnalysisDeps, BatchState } from "./analyzer";
 import type { Repository, Analysis, Score } from "../types";
+import { AnalysisRefusedError } from "../services/claude";
 
 const mockRepo: Repository = {
   id: "test-123",
@@ -49,7 +50,7 @@ const mockAnalysis: Analysis = {
   risks: ["Small team"],
   questions: ["Funding plans?"],
   metadata: {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5-5",
     cost: 0.001,
     timestamp: new Date().toISOString(),
   },
@@ -62,7 +63,7 @@ function createMockDeps(): {
   const mocks = {
     analyze: vi.fn().mockResolvedValue(highScore),
     isHighPotential: vi.fn().mockReturnValue(true),
-    getRecommendedModel: vi.fn().mockReturnValue("claude-sonnet-4-6"),
+    getRecommendedModel: vi.fn().mockReturnValue("claude-sonnet-5-5"),
     getReadmeContent: vi.fn().mockResolvedValue("# Test README"),
     analyzeRepository: vi.fn().mockResolvedValue(mockAnalysis),
     saveAnalysis: vi.fn().mockResolvedValue(undefined),
@@ -72,6 +73,8 @@ function createMockDeps(): {
     getLatestAnalysis: vi.fn().mockResolvedValue(mockAnalysis),
     getRepository: vi.fn().mockResolvedValue(mockRepo),
     getReposNeedingAnalysis: vi.fn().mockResolvedValue([]),
+    recordAnalysisFailure: vi.fn().mockResolvedValue(undefined),
+    clearAnalysisFailure: vi.fn().mockResolvedValue(undefined),
     saveBatchState: vi.fn().mockResolvedValue(undefined),
   };
 
@@ -92,6 +95,8 @@ function createMockDeps(): {
     } as any,
     storageEnhanced: {
       getReposNeedingAnalysis: mocks.getReposNeedingAnalysis,
+      recordAnalysisFailure: mocks.recordAnalysisFailure,
+      clearAnalysisFailure: mocks.clearAnalysisFailure,
     } as any,
     analyzer: {
       analyze: mocks.analyze,
@@ -143,6 +148,38 @@ describe("AnalysisOrchestrator", () => {
       expect(mocks.getReadmeContent).toHaveBeenCalled();
       expect(mocks.analyzeRepository).toHaveBeenCalled();
       expect(mocks.saveAnalysis).toHaveBeenCalled();
+    });
+
+    it("saves the analysis with the repo snapshot and clears any recorded failure", async () => {
+      await orchestrator.analyzeRepository(mockRepo);
+
+      expect(mocks.saveAnalysis).toHaveBeenCalledWith(mockAnalysis, mockRepo);
+      expect(mocks.clearAnalysisFailure).toHaveBeenCalledWith("test-123");
+    });
+
+    it("does not save a refused analysis and records a cooldown", async () => {
+      mocks.analyzeRepository.mockRejectedValue(new AnalysisRefusedError("cyber"));
+
+      await expect(orchestrator.analyzeRepository(mockRepo)).rejects.toBeInstanceOf(
+        AnalysisRefusedError,
+      );
+
+      expect(mocks.saveAnalysis).not.toHaveBeenCalled();
+      expect(mocks.recordAnalysisFailure).toHaveBeenCalledWith(
+        "test-123",
+        "refused:cyber",
+      );
+    });
+
+    it("does not record a cooldown for a transient failure", async () => {
+      mocks.analyzeRepository.mockRejectedValue(new Error("network down"));
+
+      await expect(orchestrator.analyzeRepository(mockRepo)).rejects.toThrow(
+        "network down",
+      );
+
+      expect(mocks.saveAnalysis).not.toHaveBeenCalled();
+      expect(mocks.recordAnalysisFailure).not.toHaveBeenCalled();
     });
 
     it("should save alert when investment_score >= 80", async () => {
