@@ -165,4 +165,28 @@ describe("StorageEnhancedService.getReposNeedingAnalysis (D1)", () => {
       (await storage.getReposNeedingAnalysis("tier2", false, 1)).map((r) => r.id),
     ).toEqual(["c"]);
   });
+
+  it("keeps the failure cooldown and scan timestamps when a repo's tier is updated", async () => {
+    await seed({ id: "r1" });
+    await env.DB.prepare(
+      "UPDATE repo_tiers SET last_deep_scan = '2026-10-12 10:00:00' WHERE repo_id = 'r1'",
+    ).run();
+    await storage.recordAnalysisFailure("r1", "refused:cyber");
+
+    await storage.updateRepoTier("r1", {
+      stars: 60000,
+      growth_velocity: 1,
+      engagement_score: 50,
+    });
+
+    const row = await env.DB.prepare(
+      "SELECT tier, last_deep_scan, last_analysis_error FROM repo_tiers WHERE repo_id = 'r1'",
+    ).first();
+    expect(row).toEqual({
+      tier: 1,
+      last_deep_scan: "2026-10-12 10:00:00",
+      last_analysis_error: "refused:cyber",
+    });
+    expect(await dueIds()).toEqual([]);
+  });
 });
