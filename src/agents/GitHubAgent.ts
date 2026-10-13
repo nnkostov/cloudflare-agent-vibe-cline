@@ -48,7 +48,6 @@ export class GitHubAgent {
     this.storage = storage;
     this.storageEnhanced = storageEnhanced;
 
-    // Create analysis orchestrator first (scanner's callback references it)
     this.analysisOrchestrator = new AnalysisOrchestrator({
       github,
       claude,
@@ -69,8 +68,6 @@ export class GitHubAgent {
       storage,
       storageEnhanced,
       analyzerEnhanced,
-      analyzeRepo: (repo, force) =>
-        this.analysisOrchestrator.analyzeRepository(repo, force),
     });
   }
 

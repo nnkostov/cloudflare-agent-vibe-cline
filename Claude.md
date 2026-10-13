@@ -52,7 +52,7 @@ HTTP Request → src/index.ts (WorkerService)
 - **`src/index.ts`** — Worker entry point. Routes requests, serves dashboard static assets from KV, handles CORS. Exports the `GitHubAgent` Durable Object class.
 - **`src/agents/GitHubAgent.ts`** — Durable Object shell. Handles HTTP routing, alarm/cron scheduling, and read-only query handlers. Delegates business logic to orchestrators.
 - **`src/orchestrators/`** — Business logic extracted from GitHubAgent for testability:
-  - `scanner.ts` — `ScanOrchestrator`: repo discovery, tier processing (Tier 1/2/3), metrics collection. Takes service deps + an `analyzeRepo` callback. All tier methods return `BatchResult` with error tracking.
+  - `scanner.ts` — `ScanOrchestrator`: repo discovery, tier processing (Tier 1/2/3), metrics collection (no Claude calls). All tier methods return `BatchResult` with error tracking.
   - `analyzer.ts` — `AnalysisOrchestrator`: Claude analysis, batch processing, staleness-based repo selection. Takes service deps + a `saveBatchState` callback for DO state.
 - **`src/services/`** — Service classes that all extend `BaseService` (which provides `handleError()`, `jsonResponse()`, and D1 helper methods `dbRun`/`dbFirst`/`dbAll`/`dbBatch`):
   - `github.ts` / `github-enhanced.ts` — GitHub API client (search, metrics, contributors, rate limits)
@@ -89,6 +89,10 @@ Score-based tiering in `src/analyzers/repoAnalyzer.ts` (`getRecommendedModel`); 
 
 `ClaudeService` (`src/services/claude.ts`) calls the API through `@anthropic-ai/sdk` with structured outputs (a JSON schema), so responses are always schema-valid. Opus and Sonnet requests opt into server-side refusal fallback (`fallbacks: "default"`); a refused Haiku analysis is retried once on Sonnet. Do not send `temperature`: the 5.5 models reject it.
 
+### Re-analysis policy
+
+`StorageEnhancedService.getReposNeedingAnalysis` selects repos for the scheduled batch: never analyzed; past the tier's max age (7/14/30 days); or past the tier's min age (72h/120h/168h) and changed since the snapshot stored with the last analysis (stars or forks up >=10% by a minimum amount, or a newer push). Repos with a persistent failure (refusal, truncation, bad request) in the last 24h are skipped. `AnalysisOrchestrator.runBatch` (cron `15,45 * * * *`) is the only automated caller of Claude.
+
 ### Database Schema
 
 The current schema is `database/schemas/schema-canonical.sql`; keep it in sync with production. Incremental migrations live in `database/migrations/` and run with `wrangler d1 execute github-intelligence --remote --file=<migration>` before deploying code that depends on them.
@@ -97,7 +101,7 @@ The current schema is `database/schemas/schema-canonical.sql`; keep it in sync w
 
 - All services extend `BaseService` which wraps D1 operations (`dbRun`, `dbFirst`, `dbAll`, `dbBatch`) with error handling.
 - The worker entry point (`src/index.ts`) proxies most `/api/agent/*` routes to the Durable Object; some routes like `/api/status` and `/api/scan` are handled directly.
-- **Orchestrator pattern**: `GitHubAgent` is a thin Durable Object shell that delegates to `ScanOrchestrator` and `AnalysisOrchestrator`. Orchestrators take service dependencies in their constructor plus callbacks for DO-specific operations (`analyzeRepo`, `saveBatchState`). This keeps business logic testable without the DO runtime.
+- **Orchestrator pattern**: `GitHubAgent` is a thin Durable Object shell that delegates to `ScanOrchestrator` and `AnalysisOrchestrator`. Orchestrators take service dependencies in their constructor plus callbacks for DO-specific operations (`saveBatchState`). This keeps business logic testable without the DO runtime.
 - **BatchResult error tracking**: All scan/analysis operations return `BatchResult { total, succeeded, failed, errors[] }` instead of silently swallowing errors. Callers log warnings when `failed > 0`.
 - A failed analysis (refusal, truncation, API error) throws and is never saved; the repo keeps its previous analysis. `classifyAnalysisError()` in `claude.ts` decides whether the failure is persistent (sets a 24h cooldown on the repo) or transient.
 - Scheduled scans and batches hold heartbeat run locks in Durable Object storage (`src/utils/runLock.ts`), so a run that outlasts its cron interval is never started twice. Scheduling is cron-only.
