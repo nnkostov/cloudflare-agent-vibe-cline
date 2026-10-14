@@ -76,9 +76,9 @@ Imagine having a tireless AI analyst that:
 <td width="50%">
 
 ### 🧠 **AI-Powered Analysis**
-- **Claude Opus-4** for deep research on high-potential projects
-- **Claude Sonnet-4** for comprehensive standard analysis
-- **Claude Haiku** for efficient quick scans
+- **Claude Sonnet 5.5** for full investment analysis of repos scoring 50+
+- **Claude Haiku 5.5** for efficient quick scans of the long tail
+- Structured outputs: every analysis is schema-valid JSON
 - Multi-factor scoring algorithm
 
 </td>
@@ -130,9 +130,8 @@ graph TB
     end
     
     subgraph "AI Analysis"
-        CO[Claude Opus-4]
-        CS[Claude Sonnet-4]
-        CH[Claude Haiku]
+        CS[Claude Sonnet 5.5]
+        CH[Claude Haiku 5.5]
     end
     
     subgraph "Frontend"
@@ -141,7 +140,6 @@ graph TB
     
     GH -->|Discover| W
     W -->|Schedule| DO
-    DO -->|Analyze| CO
     DO -->|Analyze| CS
     DO -->|Analyze| CH
     W -->|Store| D1
@@ -150,7 +148,7 @@ graph TB
     
     style GH fill:#f9f,stroke:#333,stroke-width:4px
     style W fill:#ff9,stroke:#333,stroke-width:4px
-    style CO fill:#9ff,stroke:#333,stroke-width:4px
+    style CS fill:#9ff,stroke:#333,stroke-width:4px
     style DASH fill:#9f9,stroke:#333,stroke-width:4px
 ```
 
@@ -186,8 +184,8 @@ Our intelligent system discovers AI/ML repositories through:
 │ 🏆 TIER 1: PREMIUM ANALYSIS                                 │
 ├─────────────────────────────────────────────────────────────┤
 │ ⭐ High-growth repositories with exceptional potential      │
-│ 🤖 Analyzed by Claude Opus-4 for deep insights            │
-│ ⏰ Scanned every few hours for latest updates              │
+│ 🤖 Re-analyzed when it changes, at least every 7 days      │
+│ ⏰ Deep-scanned every 6 hours                               │
 │ 📈 Includes technical moat & scalability assessment        │
 └─────────────────────────────────────────────────────────────┘
 
@@ -195,8 +193,8 @@ Our intelligent system discovers AI/ML repositories through:
 │ 🥈 TIER 2: STANDARD ANALYSIS                                │
 ├─────────────────────────────────────────────────────────────┤
 │ ⭐ Established projects with steady growth                  │
-│ 🤖 Analyzed by Claude Sonnet-4 for comprehensive review   │
-│ ⏰ Scanned multiple times daily                            │
+│ 🤖 Re-analyzed when it changes, at least every 14 days     │
+│ ⏰ Scanned every 12 hours                                   │
 │ 📊 Full investment scoring and recommendations             │
 └─────────────────────────────────────────────────────────────┘
 
@@ -204,8 +202,8 @@ Our intelligent system discovers AI/ML repositories through:
 │ 🥉 TIER 3: DISCOVERY SCAN                                   │
 ├─────────────────────────────────────────────────────────────┤
 │ ⭐ Emerging projects and hidden gems                       │
-│ 🤖 Quickly assessed by Claude Haiku                       │
-│ ⏰ Monitored regularly for breakout potential             │
+│ 🤖 Re-analyzed when it changes, at least every 30 days     │
+│ ⏰ Scanned every 2 days for breakout potential              │
 │ 🔍 Efficient scanning to catch rising stars early         │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -441,10 +439,8 @@ Where:
 
 ## 📚 Documentation
 
-- [API Reference](docs/API.md)
-- [Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [CLAUDE.md](CLAUDE.md): architecture, commands, model selection, re-analysis policy and D1 gotchas (kept current)
+- [docs/archive/](docs/archive/): historical implementation and fix notes (2025–early 2026; may describe code that has since changed)
 
 ## 🎉 Fun Facts
 
