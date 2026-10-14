@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import worker from "./index";
 
 describe("GitHub AI Intelligence Agent", () => {
@@ -43,16 +43,25 @@ describe("GitHub AI Intelligence Agent", () => {
   };
 
   describe("Worker", () => {
-    it("should return HTML redirect in development mode", async () => {
-      const request = new Request("http://localhost/");
-      const devEnv = { ...mockEnv, ENVIRONMENT: "development" };
+    it("returns 404 for non-API paths (Static Assets serves the dashboard)", async () => {
+      const response = await worker.fetch(
+        new Request("http://localhost/leaderboard"),
+        mockEnv,
+      );
 
-      const response = await worker.fetch(request, devEnv);
-      const text = await response.text();
+      expect(response.status).toBe(404);
+    });
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("Content-Type")).toBe("text/html");
-      expect(text).toContain("Redirecting to development server");
+    it("does not expose internal Durable Object routes", async () => {
+      const get = vi.spyOn(mockEnv.GITHUB_AGENT, "get");
+      for (const path of ["/api/scheduled", "/api/init"]) {
+        const response = await worker.fetch(
+          new Request(`http://localhost${path}`, { method: "POST" }),
+          mockEnv,
+        );
+        expect(response.status).toBe(404);
+      }
+      expect(get).not.toHaveBeenCalled();
     });
 
     it("should handle CORS preflight requests", async () => {
