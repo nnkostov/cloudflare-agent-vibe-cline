@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS analyses (
 -- Alerts table
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  repo_id TEXT NOT NULL,
+  repo_id TEXT, -- NULL for system alerts (migrations/2026-10-alerts-nullable-repo.sql)
   type TEXT NOT NULL,
   level TEXT NOT NULL,
   message TEXT NOT NULL,

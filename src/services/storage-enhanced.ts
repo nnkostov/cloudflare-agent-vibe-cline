@@ -178,28 +178,26 @@ export class StorageEnhancedService extends BaseService {
   }
 
   /**
-   * Save star history
+   * Record a repo's real star count for today, taken from a fresh GitHub
+   * refresh. The first observation of the day wins; daily_growth is the
+   * change since the previous recorded day. Returns true when this was the
+   * repo's first snapshot today.
    */
-  async saveStarHistory(history: StarHistory[]): Promise<void> {
-    if (history.length === 0) return;
-
-    const stmt = this.env.DB.prepare(`
-      INSERT OR REPLACE INTO star_history
-      (repo_id, date, star_count, daily_growth, weekly_growth_rate)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
-    await this.dbBatch(
-      history.map((h) =>
-        stmt.bind(
-          h.repo_id,
-          h.date,
-          h.star_count,
-          h.daily_growth,
-          h.weekly_growth_rate,
-        ),
-      ),
+  async recordStarSnapshot(repoId: string, stars: number): Promise<boolean> {
+    const result = await this.dbRun(
+      `INSERT INTO star_history (repo_id, date, star_count, daily_growth)
+       VALUES (?, date('now'), ?, ? - COALESCE(
+         (SELECT star_count FROM star_history
+          WHERE repo_id = ? AND date < date('now')
+          ORDER BY date DESC LIMIT 1), ?))
+       ON CONFLICT(repo_id, date) DO NOTHING`,
+      repoId,
+      stars,
+      stars,
+      repoId,
+      stars,
     );
+    return (result.meta?.changes ?? 0) > 0;
   }
 
   /**
@@ -321,34 +319,36 @@ export class StorageEnhancedService extends BaseService {
     repoId: string,
     metrics: {
       stars: number;
-      growth_velocity: number;
+      // Stars per day; null when there isn't enough history to measure it
+      growth_velocity: number | null;
       engagement_score: number;
     },
   ): Promise<void> {
-    // Determine tier based on metrics - PROPER LOGIC for balanced distribution
+    const velocity = metrics.growth_velocity ?? 0;
     let tier: 1 | 2 | 3;
 
-    // Tier 1: Top 15% of repositories (elite performers)
-    if (
-      metrics.stars >= 50000 ||
-      (metrics.stars >= 20000 && metrics.growth_velocity > 10)
-    ) {
+    // Tier 1: very large, or large and growing fast
+    if (metrics.stars >= 50000 || (metrics.stars >= 20000 && velocity > 10)) {
       tier = 1;
     }
-    // Tier 2: Next 20-25% of repositories (solid performers)
-    else if (
-      metrics.stars >= 15000 ||
-      (metrics.stars >= 5000 && metrics.growth_velocity > 5)
-    ) {
+    // Tier 2: large, or mid-sized and growing
+    else if (metrics.stars >= 15000 || (metrics.stars >= 5000 && velocity > 5)) {
       tier = 2;
-    }
-    // Tier 3: Remaining 60-70% of repositories
-    else {
+    } else {
       tier = 3;
     }
 
+    // Without growth history the velocity rules can't apply. Don't demote a
+    // repo for that; keep its current tier unless stars alone place it higher.
+    if (metrics.growth_velocity === null) {
+      const current = await this.getRepoTier(repoId);
+      if (current && current.tier < tier) {
+        tier = current.tier;
+      }
+    }
+
     const scanPriority = Math.round(
-      metrics.growth_velocity * 0.5 +
+      velocity * 0.5 +
         metrics.engagement_score * 0.3 +
         Math.log10(metrics.stars + 1) * 0.2,
     );
@@ -363,7 +363,7 @@ export class StorageEnhancedService extends BaseService {
       stars: metrics.stars,
       last_deep_scan: null,
       last_basic_scan: null,
-      growth_velocity: metrics.growth_velocity,
+      growth_velocity: velocity,
       engagement_score: metrics.engagement_score,
       scan_priority: scanPriority,
       next_scan_due: nextScanDue.toISOString(),
@@ -568,25 +568,19 @@ export class StorageEnhancedService extends BaseService {
   async getMetricsFreshness(
     repoId: string,
   ): Promise<Record<string, string | null>> {
-    const rows = await this.dbAll<{
-      metric_type: string;
-      latest: string | null;
-    }>(
-      `SELECT 'commits' as metric_type, MAX(recorded_at) as latest FROM commit_metrics WHERE repo_id = ?
-       UNION ALL SELECT 'releases', MAX(recorded_at) FROM release_history WHERE repo_id = ?
-       UNION ALL SELECT 'prs', MAX(recorded_at) FROM pr_metrics WHERE repo_id = ?
-       UNION ALL SELECT 'issues', MAX(recorded_at) FROM issue_metrics WHERE repo_id = ?
-       UNION ALL SELECT 'stars', MAX(recorded_at) FROM star_history WHERE repo_id = ?
-       UNION ALL SELECT 'forks', MAX(recorded_at) FROM fork_analysis WHERE repo_id = ?`,
-      repoId,
-      repoId,
-      repoId,
-      repoId,
-      repoId,
+    // One row of scalar subqueries. A UNION ALL chain of these six SELECTs
+    // fails on D1 ("too many terms in compound SELECT"), which silently broke
+    // every Tier 1/2 scan until Oct 2026.
+    const row = await this.dbFirst<Record<string, string | null>>(
+      `SELECT
+         (SELECT MAX(recorded_at) FROM commit_metrics WHERE repo_id = ?1) AS commits,
+         (SELECT MAX(recorded_at) FROM release_history WHERE repo_id = ?1) AS releases,
+         (SELECT MAX(recorded_at) FROM pr_metrics WHERE repo_id = ?1) AS prs,
+         (SELECT MAX(recorded_at) FROM issue_metrics WHERE repo_id = ?1) AS issues,
+         (SELECT MAX(recorded_at) FROM star_history WHERE repo_id = ?1) AS stars,
+         (SELECT MAX(recorded_at) FROM fork_analysis WHERE repo_id = ?1) AS forks`,
       repoId,
     );
-    const map: Record<string, string | null> = {};
-    for (const row of rows) map[row.metric_type] = row.latest;
-    return map;
+    return row ?? {};
   }
 }

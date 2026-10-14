@@ -106,4 +106,32 @@ describe("StorageService analyses (D1)", () => {
     expect(saved?.investment_thesis).toBeUndefined();
     expect(saved?.metadata.model).toBe("claude-sonnet-4-6");
   });
+
+  it("keeps discovered_at when a repository is saved again", async () => {
+    await env.DB.prepare(
+      "UPDATE repositories SET discovered_at = '2025-08-01 00:00:00' WHERE id = 'repo-1'",
+    ).run();
+
+    await storage.saveRepository({ ...repo, stars: 1300 });
+
+    const row = await env.DB.prepare(
+      "SELECT stars, discovered_at FROM repositories WHERE id = 'repo-1'",
+    ).first();
+    expect(row).toEqual({ stars: 1300, discovered_at: "2025-08-01 00:00:00" });
+  });
+
+  it("saves system alerts with no repository", async () => {
+    await storage.saveAlert({
+      repo_id: null,
+      type: "system",
+      level: "urgent",
+      message: "scan: 50/50 repos failed",
+    });
+
+    const row = await env.DB.prepare(
+      "SELECT repo_id, type FROM alerts WHERE type = 'system'",
+    ).first();
+    expect(row).toEqual({ repo_id: null, type: "system" });
+  });
 });
+

@@ -87,7 +87,7 @@ export class GitHubAgent {
     result: BatchResult,
   ): Promise<void> {
     await this.storage.saveAlert({
-      repo_id: "system",
+      repo_id: null,
       type: "system",
       level: result.failed > 10 ? "urgent" : "medium",
       message: `${operation}: ${result.failed}/${result.total} repos failed`,

@@ -190,3 +190,77 @@ describe("StorageEnhancedService.getReposNeedingAnalysis (D1)", () => {
     expect(await dueIds()).toEqual([]);
   });
 });
+
+describe("StorageEnhancedService star snapshots and tiering (D1)", () => {
+  let storage: StorageEnhancedService;
+  const starRows = async (id: string) =>
+    (
+      await env.DB.prepare(
+        "SELECT date, star_count, daily_growth FROM star_history WHERE repo_id = ? ORDER BY date",
+      )
+        .bind(id)
+        .all()
+    ).results;
+
+  beforeEach(async () => {
+    await resetDatabase(env.DB);
+    storage = new StorageEnhancedService(env as unknown as Env);
+  });
+
+  it("records one real snapshot per day with growth since the previous day", async () => {
+    await seed({ id: "r1", stars: 1000 });
+    await env.DB.prepare(
+      "INSERT INTO star_history (repo_id, date, star_count) VALUES ('r1', date('now', '-3 days'), 940)",
+    ).run();
+
+    expect(await storage.recordStarSnapshot("r1", 1000)).toBe(true);
+    expect(await storage.recordStarSnapshot("r1", 1010)).toBe(false);
+
+    const rows = await starRows("r1");
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ star_count: 1000, daily_growth: 60 });
+  });
+
+  it("reports metric freshness in one query", async () => {
+    await seed({ id: "r1" });
+    expect(await storage.getMetricsFreshness("r1")).toMatchObject({
+      commits: null,
+      stars: null,
+    });
+
+    await storage.recordStarSnapshot("r1", 1000);
+    const freshness = await storage.getMetricsFreshness("r1");
+    expect(freshness.stars).not.toBeNull();
+  });
+
+  it("keeps a repo's tier while its growth is still unknown", async () => {
+    await seed({ id: "big", tier: 1, stars: 30000 });
+
+    await storage.updateRepoTier("big", {
+      stars: 30000,
+      growth_velocity: null,
+      engagement_score: 50,
+    });
+    expect((await storage.getRepoTier("big"))?.tier).toBe(1);
+
+    await storage.updateRepoTier("big", {
+      stars: 30000,
+      growth_velocity: 3,
+      engagement_score: 50,
+    });
+    expect((await storage.getRepoTier("big"))?.tier).toBe(2);
+  });
+
+  it("still promotes on stars alone when growth is unknown", async () => {
+    await seed({ id: "huge", tier: 3, stars: 60000 });
+
+    await storage.updateRepoTier("huge", {
+      stars: 60000,
+      growth_velocity: null,
+      engagement_score: 50,
+    });
+
+    expect((await storage.getRepoTier("huge"))?.tier).toBe(1);
+  });
+});
+

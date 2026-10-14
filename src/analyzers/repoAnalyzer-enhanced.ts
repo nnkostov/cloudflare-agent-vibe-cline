@@ -12,6 +12,32 @@ import type {
 import { SCORING } from "../types";
 import { BaseService } from "../services/base";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Stars gained per day, measured against a real recorded snapshot: the
+ * newest one at least 7 days old, else the oldest one at least 1 day old.
+ * Snapshots can be days apart, so growth is divided by the actual time
+ * elapsed. Returns null when no snapshot is old enough to measure against.
+ */
+export function starVelocity(
+  currentStars: number,
+  history: Pick<StarHistory, "date" | "star_count">[],
+  now: number = Date.now(),
+): number | null {
+  const aged = history
+    .map((h) => ({ stars: h.star_count, days: (now - Date.parse(h.date)) / DAY_MS }))
+    .filter((h) => h.days >= 1);
+  if (aged.length === 0) return null;
+
+  const weekOld = aged.filter((h) => h.days >= 7);
+  const reference =
+    weekOld.length > 0
+      ? weekOld.reduce((a, b) => (b.days < a.days ? b : a))
+      : aged.reduce((a, b) => (b.days > a.days ? b : a));
+  return (currentStars - reference.stars) / reference.days;
+}
+
 export class RepoAnalyzerEnhanced extends BaseService {
   constructor(env: Env) {
     super(env);
@@ -342,26 +368,13 @@ export class RepoAnalyzerEnhanced extends BaseService {
   }
 
   /**
-   * Calculate growth velocity for tier assignment
+   * Star growth per day for tier assignment. See starVelocity.
    */
   calculateGrowthVelocity(
     currentStars: number,
     historicalStars: StarHistory[],
-  ): number {
-    if (historicalStars.length === 0) return 0;
-
-    // Get stars from 7 days ago
-    const weekAgo = historicalStars.find((h) => {
-      const daysAgo = Math.floor(
-        (Date.now() - new Date(h.date).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return daysAgo >= 7;
-    });
-
-    if (!weekAgo) return 0;
-
-    const weeklyGrowth = currentStars - weekAgo.star_count;
-    return weeklyGrowth / 7; // Stars per day
+  ): number | null {
+    return starVelocity(currentStars, historicalStars);
   }
 
   /**

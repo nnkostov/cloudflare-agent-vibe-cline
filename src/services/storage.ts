@@ -19,15 +19,39 @@ export class StorageService extends BaseService {
   }
 
   // Repository operations
+
+  /**
+   * Insert or update a repository. An upsert rather than INSERT OR REPLACE,
+   * which deletes and re-inserts the row and so reset discovered_at to now
+   * on every save.
+   */
   async saveRepository(repo: Repository): Promise<void> {
     return this.performanceMonitor.monitor("saveRepository", async () => {
       await this.dbRun(
         `
-        INSERT OR REPLACE INTO repositories (
-          id, name, owner, full_name, description, stars, forks, 
-          open_issues, language, topics, created_at, updated_at, 
+        INSERT INTO repositories (
+          id, name, owner, full_name, description, stars, forks,
+          open_issues, language, topics, created_at, updated_at,
           pushed_at, is_archived, is_fork, html_url, clone_url, default_branch
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          owner = excluded.owner,
+          full_name = excluded.full_name,
+          description = excluded.description,
+          stars = excluded.stars,
+          forks = excluded.forks,
+          open_issues = excluded.open_issues,
+          language = excluded.language,
+          topics = excluded.topics,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          pushed_at = excluded.pushed_at,
+          is_archived = excluded.is_archived,
+          is_fork = excluded.is_fork,
+          html_url = excluded.html_url,
+          clone_url = excluded.clone_url,
+          default_branch = excluded.default_branch`,
         repo.id,
         repo.name,
         repo.owner,

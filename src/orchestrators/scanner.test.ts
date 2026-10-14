@@ -35,7 +35,6 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
     getReleaseMetrics: vi.fn().mockResolvedValue([]),
     getPullRequestMetrics: vi.fn().mockResolvedValue(null),
     getIssueMetrics: vi.fn().mockResolvedValue(null),
-    getStarHistory: vi.fn().mockResolvedValue([]),
     analyzeForkNetwork: vi.fn().mockResolvedValue(null),
 
     // GitHubService
@@ -78,7 +77,7 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
     saveReleaseMetrics: vi.fn().mockResolvedValue(undefined),
     savePullRequestMetrics: vi.fn().mockResolvedValue(undefined),
     saveIssueMetrics: vi.fn().mockResolvedValue(undefined),
-    saveStarHistory: vi.fn().mockResolvedValue(undefined),
+    recordStarSnapshot: vi.fn().mockResolvedValue(true),
     saveForkAnalysis: vi.fn().mockResolvedValue(undefined),
 
     // RepoAnalyzerEnhanced
@@ -97,7 +96,6 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
       getReleaseMetrics: mocks.getReleaseMetrics,
       getPullRequestMetrics: mocks.getPullRequestMetrics,
       getIssueMetrics: mocks.getIssueMetrics,
-      getStarHistory: mocks.getStarHistory,
       analyzeForkNetwork: mocks.analyzeForkNetwork,
     } as any,
     storage: {
@@ -118,7 +116,7 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
       saveReleaseMetrics: mocks.saveReleaseMetrics,
       savePullRequestMetrics: mocks.savePullRequestMetrics,
       saveIssueMetrics: mocks.saveIssueMetrics,
-      saveStarHistory: mocks.saveStarHistory,
+      recordStarSnapshot: mocks.recordStarSnapshot,
       saveForkAnalysis: mocks.saveForkAnalysis,
     } as any,
     analyzerEnhanced: {
@@ -195,6 +193,38 @@ describe("ScanOrchestrator", () => {
   });
 
   describe("processTier1Repos", () => {
+    it("records a real star snapshot and a daily metrics row from a fresh refresh", async () => {
+      mocks.getReposNeedingScan.mockResolvedValue(["r1"]);
+
+      await scanner.processTier1Repos();
+
+      // Keyed by the id in the refreshed GitHub data (the mock's "repo-1")
+      expect(mocks.recordStarSnapshot).toHaveBeenCalledWith("repo-1", 500);
+      expect(mocks.saveMetrics).toHaveBeenCalledWith(
+        expect.objectContaining({ repo_id: "repo-1", stars: 500, forks: 100 }),
+      );
+    });
+
+    it("writes no second metrics row when today's snapshot already exists", async () => {
+      mocks.getReposNeedingScan.mockResolvedValue(["r1"]);
+      mocks.recordStarSnapshot.mockResolvedValue(false);
+
+      await scanner.processTier1Repos();
+
+      expect(mocks.recordStarSnapshot).toHaveBeenCalled();
+      expect(mocks.saveMetrics).not.toHaveBeenCalled();
+    });
+
+    it("records no snapshot when the GitHub refresh fails", async () => {
+      mocks.getReposNeedingScan.mockResolvedValue(["r1"]);
+      mocks.getRepoDetails.mockRejectedValue(new Error("GitHub down"));
+
+      const result = await scanner.processTier1Repos();
+
+      expect(mocks.recordStarSnapshot).not.toHaveBeenCalled();
+      expect(result.succeeded).toBe(1);
+    });
+
     it("should refresh every Tier 1 repo from GitHub", async () => {
       mocks.getReposNeedingScan.mockResolvedValue(["r1", "r2"]);
 

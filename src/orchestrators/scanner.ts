@@ -204,6 +204,7 @@ export class ScanOrchestrator {
             );
             await this.deps.storage.saveRepository(fresh);
             repo = fresh;
+            await this.recordSnapshot(fresh);
           } catch (err) {
             console.warn(
               `Could not refresh ${repo.full_name}, using cached data`,
@@ -214,7 +215,7 @@ export class ScanOrchestrator {
           const freshness =
             await this.deps.storageEnhanced.getMetricsFreshness(repoId);
 
-          const [commits, releases, prs, issues, stars, forks] =
+          const [commits, releases, prs, issues, forks] =
             await Promise.all([
               isStale(freshness.commits, 6)
                 ? this.deps.githubEnhanced.getCommitActivity(
@@ -240,12 +241,6 @@ export class ScanOrchestrator {
                     repo.name,
                   )
                 : null,
-              isStale(freshness.stars, 12)
-                ? this.deps.githubEnhanced.getStarHistory(
-                    repo.owner,
-                    repo.name,
-                  )
-                : null,
               isStale(freshness.forks, 24)
                 ? this.deps.githubEnhanced.analyzeForkNetwork(
                     repo.owner,
@@ -259,7 +254,6 @@ export class ScanOrchestrator {
             releases: releases ?? undefined,
             prs: prs ?? undefined,
             issues: issues ?? undefined,
-            stars: stars ?? undefined,
             forks: forks ?? undefined,
           });
 
@@ -357,6 +351,7 @@ export class ScanOrchestrator {
             );
             await this.deps.storage.saveRepository(fresh);
             repo = fresh;
+            await this.recordSnapshot(fresh);
           } catch (err) {
             console.warn(
               `Could not refresh ${repo.full_name}, using cached data`,
@@ -367,28 +362,14 @@ export class ScanOrchestrator {
           const freshness =
             await this.deps.storageEnhanced.getMetricsFreshness(repoId);
 
-          const [stars, issues] = await Promise.all([
-            isStale(freshness.stars, 12)
-              ? this.deps.githubEnhanced.getStarHistory(
-                  repo.owner,
-                  repo.name,
-                  7,
-                )
-              : null,
-            isStale(freshness.issues, 12)
-              ? this.deps.githubEnhanced.getIssueMetrics(
-                  repo.owner,
-                  repo.name,
-                  7,
-                )
-              : null,
-          ]);
+          const issues = isStale(freshness.issues, 12)
+            ? await this.deps.githubEnhanced.getIssueMetrics(
+                repo.owner,
+                repo.name,
+                7,
+              )
+            : null;
 
-          if (stars) {
-            await this.deps.storageEnhanced.saveStarHistory(
-              stars.map((s) => ({ ...s, repo_id: repoId })),
-            );
-          }
           if (issues) {
             await this.deps.storageEnhanced.saveIssueMetrics({
               ...issues,
@@ -406,7 +387,7 @@ export class ScanOrchestrator {
               repo.stars,
               cached.stars,
             );
-          if (growthVelocity > 10 || repo.stars >= 100) {
+          if ((growthVelocity ?? 0) > 10 || repo.stars >= 100) {
             await this.deps.storageEnhanced.updateRepoTier(repoId, {
               stars: repo.stars,
               growth_velocity: growthVelocity,
@@ -503,6 +484,29 @@ export class ScanOrchestrator {
   }
 
   /**
+   * Record real growth data from a fresh GitHub refresh: today's star count
+   * (one per day) and, on the first refresh of the day, a repo_metrics row.
+   */
+  private async recordSnapshot(repo: Repository): Promise<void> {
+    const firstToday = await this.deps.storageEnhanced.recordStarSnapshot(
+      repo.id,
+      repo.stars,
+    );
+    if (firstToday) {
+      await this.deps.storage.saveMetrics({
+        repo_id: repo.id,
+        stars: repo.stars,
+        forks: repo.forks,
+        open_issues: repo.open_issues,
+        watchers: repo.stars,
+        contributors: 0,
+        commits_count: 0,
+        recorded_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
    * Save metrics keyed by repo_id, skipping undefined entries.
    */
   private async saveMetricsWithRepoId(
@@ -512,7 +516,6 @@ export class ScanOrchestrator {
       releases?: any[];
       prs?: any;
       issues?: any;
-      stars?: any[];
       forks?: any;
     },
   ): Promise<void> {
@@ -537,11 +540,6 @@ export class ScanOrchestrator {
         ...metrics.issues,
         repo_id: repoId,
       });
-    }
-    if (metrics.stars) {
-      await this.deps.storageEnhanced.saveStarHistory(
-        metrics.stars.map((s) => ({ ...s, repo_id: repoId })),
-      );
     }
     if (metrics.forks) {
       await this.deps.storageEnhanced.saveForkAnalysis({

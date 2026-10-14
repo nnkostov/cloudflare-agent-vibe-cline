@@ -301,7 +301,7 @@ export class TailWorker {
         `
         INSERT INTO alerts (repo_id, type, level, message, metadata)
         VALUES (
-          'system',
+          NULL,
           'system_error',
           'critical',
           ?,

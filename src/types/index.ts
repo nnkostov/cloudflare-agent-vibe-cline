@@ -179,7 +179,7 @@ export interface Analysis {
 // Alert types
 export interface Alert {
   id?: number;
-  repo_id: string;
+  repo_id: string | null; // null for system alerts
   type: "high_growth" | "investment_opportunity" | "trend" | "system";
   level: "urgent" | "high" | "medium";
   message: string;

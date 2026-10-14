@@ -122,7 +122,7 @@ class ApiClient {
     return this.request<{
       alerts: Array<{
         id: number;
-        repo_id: string;
+        repo_id: string | null; // null for system alerts
         type: string;
         level: string;
         message: string;

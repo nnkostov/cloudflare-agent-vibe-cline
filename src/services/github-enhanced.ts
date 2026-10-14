@@ -6,7 +6,6 @@ import type {
   ReleaseMetrics,
   PullRequestMetrics,
   IssueMetrics,
-  StarHistory,
   ForkAnalysis,
 } from "../types";
 import { globalConnectionPool } from "../utils/connectionPool";
@@ -375,67 +374,6 @@ export class GitHubEnhancedService extends BaseService {
         } catch (error) {
           console.error(
             `Error getting issue metrics for ${owner}/${repo}:`,
-            error,
-          );
-          throw error; // Re-throw for exponential backoff
-        }
-      });
-    });
-  }
-
-  /**
-   * Get star history using GitHub Archive or approximation
-   */
-  async getStarHistory(
-    owner: string,
-    repo: string,
-    days: number = 30,
-  ): Promise<StarHistory[]> {
-    // Apply rate limiting
-    await githubRateLimiter.acquire();
-
-    return globalConnectionPool.withConnection(async () => {
-      return withExponentialBackoff(async () => {
-        try {
-          // Get current star count
-          const { data: repoData } = await this.octokit.repos.get({
-            owner,
-            repo,
-          });
-
-          const currentStars = repoData.stargazers_count;
-          const history: StarHistory[] = [];
-
-          // For now, we'll create an approximation based on current data
-          // In production, you'd want to use GitHub Archive or star-history.com API
-          const today = new Date();
-
-          for (let i = 0; i < days; i++) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split("T")[0];
-
-            // Simple linear approximation for demo
-            // In reality, you'd fetch actual historical data
-            const daysAgo = i;
-            const estimatedStars = Math.floor(
-              currentStars * (1 - daysAgo * 0.01),
-            );
-            const dailyGrowth = i === 0 ? 0 : Math.floor(currentStars * 0.01);
-
-            history.push({
-              repo_id: "", // Will be set by caller
-              date: dateStr,
-              star_count: Math.max(0, estimatedStars),
-              daily_growth: dailyGrowth,
-              weekly_growth_rate: i % 7 === 0 ? 7.0 : null,
-            });
-          }
-
-          return history.sort((a, b) => b.date.localeCompare(a.date));
-        } catch (error) {
-          console.error(
-            `Error getting star history for ${owner}/${repo}:`,
             error,
           );
           throw error; // Re-throw for exponential backoff
