@@ -12,8 +12,6 @@
     "deploy": "node scripts/auto-version.js && npm run build:dashboard && wrangler deploy --env=\"\"",
     "test": "vitest",
     "test:ci": "vitest run",
-    "test:enhanced": "node test-enhanced-system.js",
-    "test:enhanced:prod": "set SKIP_SCAN_TEST=true && node test-enhanced-system.js",
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
@@ -21,21 +19,21 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@cloudflare/kv-asset-handler": "^0.4.0",
-    "@cloudflare/workers-types": "^4.20241205.0",
-    "@miniflare/d1": "^2.14.4",
     "@octokit/rest": "^20.0.2",
-    "dotenv": "^17.2.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.53",
+    "@cloudflare/workers-types": "^5.20261013.1",
+    "@miniflare/d1": "^2.14.4",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "dotenv": "^17.2.1",
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
     "typescript": "^5.3.3",
     "vitest": "^3.2.4",
-    "wrangler": "^4.82.2"
+    "wrangler": "^4.150.0"
   },
   "engines": {
     "node": ">=18.0.0"
