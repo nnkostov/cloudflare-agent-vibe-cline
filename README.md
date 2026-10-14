@@ -20,8 +20,8 @@
 Imagine having a tireless AI analyst that:
 - 🔍 **Scans GitHub 24/7** for emerging AI/ML projects
 - 🧠 **Analyzes with Claude AI** using VC-grade investment criteria
-- 📊 **Tracks growth patterns** across thousands of repositories
-- 🚨 **Alerts you instantly** when it finds high-potential opportunities
+- 📊 **Tracks growth patterns** across thousands of repositories (about 4,500 today)
+- 🚨 **Raises alerts** when an analysis finds a high-potential opportunity
 - 🎨 **Visualizes insights** in a stunning cyberpunk dashboard
 
 **This is that analyst.** Built on Cloudflare Workers, powered by Claude AI, and designed for serious investors.
@@ -47,9 +47,9 @@ Imagine having a tireless AI analyst that:
 
 #### ✅ **With This System**
 - **24/7 automated** monitoring
-- **100% coverage** of AI/ML ecosystem
+- **Thousands of AI/ML repos** tracked continuously
 - **Data-driven** AI analysis
-- **<$100/month** operational cost
+- **~$100–150/month** in Claude usage
 - **Real-time discovery** (within hours)
 - **Unlimited scalability** (no human limits)
 
@@ -60,7 +60,7 @@ Imagine having a tireless AI analyst that:
 ### 💰 Real Cost Comparison
 
 - **Human Analyst Team**: $200,000-500,000/year
-- **This System**: Less than your Netflix subscription
+- **This System**: roughly $100–150/month of Claude usage at current volume, plus Cloudflare's $5/month Workers Paid plan
 - **ROI**: Find just ONE good investment and it pays for itself 1000x over
 
 ### ⏱️ Time Savings
@@ -85,10 +85,10 @@ Imagine having a tireless AI analyst that:
 <td width="50%">
 
 ### ⚡ **Real-Time Intelligence**
-- Continuous GitHub monitoring
-- Hourly batch analysis
+- Hourly GitHub discovery scans
+- Analysis batches every 30 minutes
 - Smart tier-based prioritization
-- Complete database coverage
+- Re-analysis only when a repository changes
 
 </td>
 </tr>
@@ -157,25 +157,15 @@ graph TB
 
 ### 🔍 Repository Discovery Process
 
-Our intelligent system discovers AI/ML repositories through:
+Every hour the agent searches GitHub with seven strategies:
 
-1. **GitHub API Search**
-   - Searches for repositories with AI/ML topics: `machine-learning`, `artificial-intelligence`, `deep-learning`, `neural-network`, `llm`, `generative-ai`
-   - Filters by minimum stars (10+) to ensure quality
-   - Monitors recently updated projects (pushed within 30 days)
-   - Tracks new repositories as they emerge
+1. **Established projects**: `topic:ai` or `topic:llm` with 500+ stars
+2. **New projects**: created in the last 30 days with `topic:ai` or `topic:llm` and 5+ stars
+3. **Trending projects**: pushed in the last 7 days with `topic:ai` or `topic:machine-learning` (20+ stars), or Python projects with `topic:ai` (10+ stars)
 
-2. **Smart Filtering**
-   - Excludes forks to focus on original work
-   - Prioritizes actively maintained projects
-   - Identifies projects with growing momentum
-   - Detects breakthrough technologies early
+New repositories are saved and assigned a tier; forks and archived repositories are excluded from analysis. Known repositories are refreshed as they show up again.
 
-3. **Continuous Monitoring**
-   - Hourly scans for new repositories
-   - Real-time tracking of star growth
-   - Immediate alerts for high-velocity projects
-   - 24/7 coverage of the entire GitHub ecosystem
+Each tier is then refreshed from GitHub on its own schedule (below). Every successful refresh records the repository's real star count for the day, so growth is measured from actual history.
 
 ### 📊 Three-Tier Analysis System
 
@@ -212,38 +202,31 @@ Our intelligent system discovers AI/ML repositories through:
 
 ### 📊 Repository Data Collection
 
-For each repository, our system collects and analyzes:
-
 <table>
 <tr>
 <td width="33%">
 
-**📈 Growth Metrics**
+**📈 Growth (all tiers)**
+- Daily star snapshots
 - Star velocity (stars/day)
-- Fork growth rate
-- Contributor acceleration
-- Community expansion
-- Momentum indicators
+- Fork counts
+- Open issues
 
 </td>
 <td width="33%">
 
-**🏃 Activity Metrics**
-- Commit frequency
-- Pull request volume
-- Issue resolution time
-- Release cadence
-- Development velocity
+**🏃 Activity (Tier 1 deep scan)**
+- Commits and unique authors per day (30 days)
+- Releases
+- Pull requests: volume, merge time, contributors
+- Issues: close rate, time to first response
+- Active forks
 
 </td>
 <td width="33%">
 
-**👥 Team Analysis**
-- Core contributor count
-- Contributor expertise
-- Commit patterns
-- Team stability
-- Geographic distribution
+**👥 Team (high scorers)**
+- Top contributors' profiles (company, location, followers) for repos scoring 70+ on investment
 
 </td>
 </tr>
@@ -251,66 +234,42 @@ For each repository, our system collects and analyzes:
 
 ### 🤖 AI-Powered Investment Analysis
 
-Each repository receives a comprehensive investment analysis including:
+Claude returns a structured analysis (validated against a JSON schema) for each repository. An illustrative example:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 📊 INVESTMENT SCORECARD                                     │
+│ 📊 INVESTMENT SCORECARD                    (scores 0–100)   │
 ├─────────────────────────────────────────────────────────────┤
+│ Investment        78     Technical moat       52            │
+│ Innovation        76     Scalability          82            │
+│ Team              80     Developer adoption   96            │
+│ Market            88                                        │
 │                                                             │
-│ Overall Score: 8.5/10 ⭐⭐⭐⭐⭐⭐⭐⭐⭐                      │
+│ Recommendation: BUY   (strong-buy · buy · watch · pass)     │
 │                                                             │
-│ 💪 Key Strengths:                                          │
-│ • Exceptional growth rate (300% in 6 months)               │
-│ • Strong technical moat with novel approach                │
-│ • Experienced team from FAANG companies                    │
-│ • Clear monetization path identified                       │
-│                                                             │
-│ ⚠️  Risk Factors:                                          │
-│ • Heavy competition from established players               │
-│ • Dependency on single key contributor                     │
-│ • Limited documentation for enterprise adoption            │
-│                                                             │
-│ 💡 Investment Recommendation:                               │
-│ "Strong Buy - Early-stage opportunity with high growth     │
-│ potential. Consider seed investment before Series A."       │
-│                                                             │
-│ 🎯 Suggested Actions:                                       │
-│ • Schedule technical due diligence call                    │
-│ • Review competitor landscape analysis                     │
-│ • Connect with founding team                               │
+│ 💪 Strengths      ⚠️  Risks      ❓ Due-diligence questions  │
+│ 📈 Growth prediction (6–12 months)                          │
+│ 💡 Investment thesis (for buy / strong-buy)                 │
+│ 🥊 Competitive analysis                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+Scores of 80+ on investment raise an investment-opportunity alert (90+ is urgent).
+
 ### 📋 Complete Analysis Output
 
-For each analyzed repository, investors receive:
+Each analysis on the dashboard's Analysis page includes:
 
-1. **Executive Summary**
-   - Investment score (1-10)
-   - One-line recommendation
-   - Key opportunity highlights
+1. **Scores**: investment, innovation, team, market, technical moat, scalability and developer adoption (0–100)
+2. **Recommendation**: strong-buy, buy, watch or pass
+3. **Executive summary**: 3–4 paragraphs
+4. **Strengths and risks**
+5. **Due-diligence questions**
+6. **Growth prediction** for the next 6–12 months
+7. **Investment thesis** when the recommendation is buy or strong-buy
+8. **Competitive analysis**
 
-2. **Detailed Metrics**
-   - Growth charts and projections
-   - Community health indicators
-   - Technical complexity assessment
-   - Market opportunity size
-
-3. **Competitive Analysis**
-   - Similar projects comparison
-   - Unique value propositions
-   - Market positioning
-
-4. **Team Assessment**
-   - Founder backgrounds
-   - Core team expertise
-   - Advisory board quality
-
-5. **Investment Thesis**
-   - Bull case scenario
-   - Bear case risks
-   - Expected ROI timeline
+Model and cost: repositories scoring 50+ on the agent's own score are analyzed by Claude Sonnet 5.5 (about $0.03 each), the rest by Claude Haiku 5.5 (about $0.002). Every analysis records its real token usage and cost.
 
 ## 🎮 Dashboard Preview
 
@@ -343,8 +302,11 @@ For each analyzed repository, investors receive:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/status` | GET | System health and metrics |
+| `/api/version` | GET | Deployed version, version id and upload time |
 | `/api/scan` | POST | Trigger manual repository scan |
-| `/api/analyze` | POST | Analyze specific repository |
+| `/api/analyze` | POST | Analyze a repository (`{repoOwner, repoName, force}`) |
+| `/api/analyze/:owner/:repo` | GET | Latest analysis for a repository (analyzes it if missing) |
+| `/api/batch/history` | GET | Recent scheduled analysis batches |
 
 ### Data Access
 
@@ -361,7 +323,8 @@ For each analyzed repository, investors receive:
 |----------|--------|-------------|
 | `/api/reports/daily` | GET | Daily investment summary |
 | `/api/reports/enhanced` | GET | Deep analysis reports |
-| `/api/alerts` | GET | High-priority notifications |
+| `/api/alerts` | GET | Investment-opportunity and system alerts |
+| `/api/worker-metrics` | GET | Activity over the last hour in 5-minute buckets |
 
 ## 🎯 Use Cases
 
@@ -380,44 +343,47 @@ For each analyzed repository, investors receive:
 ## 🛠️ Advanced Configuration
 
 <details>
-<summary><b>🔧 Environment Variables</b></summary>
+<summary><b>🔧 Secrets and configuration</b></summary>
+
+The Worker needs two secrets:
 
 ```bash
-# Required
 GITHUB_TOKEN=            # GitHub personal access token
-ANTHROPIC_API_KEY=       # Claude AI API key
-
-# Optional
-SCAN_INTERVAL=3600       # Scan frequency in seconds
-ANALYSIS_BATCH_SIZE=25   # Repos per batch
-TIER_1_THRESHOLD=100     # Minimum stars for Tier 1
+ANTHROPIC_API_KEY=       # Anthropic API key
 ```
+
+Set them with `wrangler secret put` for production, and in `.dev.vars` for local development (see `.env.example`).
+
+Everything else (models, effort levels, pricing, score thresholds, tier settings) lives in `CONFIG` in `src/types/index.ts`; schedules are the cron triggers in `wrangler.toml`.
 
 </details>
 
 <details>
 <summary><b>📊 Scoring Algorithm</b></summary>
 
-The system uses a weighted scoring algorithm:
+Before calling Claude, the agent scores each repository from its GitHub data:
 
 ```typescript
 Total Score = (Growth × 0.4) + (Engagement × 0.3) + (Quality × 0.3)
 
 Where:
-- Growth: Stars, forks, contributor velocity
-- Engagement: Issues, PRs, community activity  
-- Quality: Documentation, tests, maintenance
+- Growth: star count, fork-to-star ratio, fork count
+- Engagement: fork and issue ratios, AI/ML topic relevance
+- Quality: description, topics, language, recent updates, not archived or a fork
 ```
+
+The score picks the Claude model (50+ gets Sonnet, below 50 Haiku). Tiers are assigned separately, from stars and real growth velocity.
 
 </details>
 
 <details>
-<summary><b>🚀 Performance Tuning</b></summary>
+<summary><b>🚀 Performance and cost controls</b></summary>
 
-- **Batch Processing**: Analyzes multiple repositories in parallel
-- **Smart Caching**: 7-day cache for analyzed repositories
-- **Rate Limiting**: Automatic throttling for API limits
-- **Edge Computing**: Runs at Cloudflare edge locations globally
+- **Change-driven re-analysis**: a repository is re-analyzed only after it changes (new pushes, or stars or forks up 10%+), or when it reaches its tier's maximum age (7, 14 or 30 days)
+- **Rate limiting**: GitHub calls at 30/minute, Claude calls at 30/minute
+- **Run locks**: a scan or batch that outlasts its cron slot is never started twice
+- **Structured outputs**: no failed or retried analyses from malformed JSON
+- **Edge computing**: runs on Cloudflare Workers, Durable Objects, D1 and R2
 
 </details>
 
@@ -458,65 +424,62 @@ Where:
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- Cloudflare account
-- GitHub token (for API access)
-- Anthropic API key (for Claude AI)
+- Node.js 22+ (required by Wrangler 4)
+- Cloudflare account on the Workers Paid plan (Durable Objects, D1, R2)
+- GitHub personal access token
+- Anthropic API key
 
 ### 1️⃣ Clone & Install
 
 ```bash
-# Clone the repository
 git clone https://github.com/nnkostov/cloudflare-agent-vibe-cline.git
 cd cloudflare-agent-vibe-cline
 
-# Install dependencies
 npm install
 cd dashboard && npm install && cd ..
 ```
 
-### 2️⃣ Configure Environment
+### 2️⃣ Local Secrets
 
 ```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your credentials:
-# - GITHUB_TOKEN
-# - ANTHROPIC_API_KEY
+# Wrangler reads local secrets from .dev.vars (gitignored)
+cp .env.example .dev.vars
+# then fill in GITHUB_TOKEN and ANTHROPIC_API_KEY
 ```
 
 ### 3️⃣ Set Up Cloudflare Resources
 
 ```bash
-# Create D1 database
-wrangler d1 create github-agent-db
+npx wrangler d1 create github-intelligence
+npx wrangler r2 bucket create github-analyses
 
-# Create R2 bucket  
-wrangler r2 bucket create github-agent-storage
-
-# Update wrangler.toml with the generated IDs
+# Put the new D1 database_id into wrangler.toml and wrangler.tail.toml
 ```
 
-### 4️⃣ Initialize Database
+### 4️⃣ Initialize the Database
 
 ```bash
-# Run database migrations
-wrangler d1 execute github-agent-db --file=./schema.sql
+npx wrangler d1 execute github-intelligence --remote --file=database/schemas/schema-canonical.sql
 ```
 
-### 5️⃣ Deploy to Production
+Later schema changes ship as files in `database/migrations/`; run each with the same command, before deploying the code that needs it.
+
+### 5️⃣ Deploy
 
 ```bash
-# Deploy the worker and dashboard
+npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put ANTHROPIC_API_KEY
+
+# Builds the dashboard, deploys the Worker, and commits + tags a version bump
 npm run deploy
 
-# Your agent is now live! 🎉
+# Deploy the log-collecting tail Worker
+npx wrangler deploy -c wrangler.tail.toml
 ```
 
 ### 6️⃣ Scheduling
 
-Scanning and analysis run automatically from the cron triggers in `wrangler.toml`; there is nothing to initialize.
+Everything runs from the cron triggers in `wrangler.toml`; there is nothing to initialize. Discovery scans run hourly, analysis batches every 30 minutes, and a full sweep runs at 02:00 and 14:00 UTC.
 
 ## 📜 License
 
@@ -528,6 +491,6 @@ MIT License - see [LICENSE](LICENSE) for details
 
 **Built with ❤️ by developers who believe AI should work for us**
 
-[🌐 Live Demo](https://github-ai-intelligence.nkostov.workers.dev) | [📧 Contact](mailto:support@example.com) | [🐦 Twitter](https://twitter.com/example)
+[🌐 Live Demo](https://github-ai-intelligence.nkostov.workers.dev)
 
 </div>

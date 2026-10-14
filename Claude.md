@@ -8,6 +8,8 @@ Cloudflare Workers-based AI agent that monitors GitHub for high-potential AI/ML 
 
 ## Build & Development Commands
 
+Requires Node.js 22+ (Wrangler 4).
+
 ```bash
 # Install dependencies (root + dashboard)
 npm install && cd dashboard && npm install
@@ -18,7 +20,7 @@ npm run dev
 # Run worker only (wrangler dev server)
 npm run dev:worker
 
-# Run dashboard only (Vite dev server on port 3003)
+# Run dashboard only (Vite dev server on port 3000; proxies /api to wrangler dev on 8787)
 npm run dev:dashboard
 
 # Tests (vitest 4 + @cloudflare/vitest-plugin, run inside workerd)
@@ -55,7 +57,7 @@ HTTP Request → src/index.ts (WorkerService)
 - **`src/index.ts`** — Worker entry point for `/api/*` (the dashboard is served by Static Assets), CORS, and the cron `scheduled()` handler. Internal agent routes (`/scheduled`, `/init`) are never forwarded from the public API. Exports the `GitHubAgent` Durable Object class.
 - **`src/agents/GitHubAgent.ts`** — Durable Object shell. Handles HTTP routing, cron-triggered runs (with run locks), and read-only query handlers. Delegates business logic to orchestrators.
 - **`src/orchestrators/`** — Business logic extracted from GitHubAgent for testability:
-  - `scanner.ts` — `ScanOrchestrator`: repo discovery, tier processing (Tier 1/2/3), metrics collection (no Claude calls). Each successful Tier 1/2 GitHub refresh records a real daily star snapshot (`star_history`) and a `repo_metrics` row; growth velocity for tiering comes from those (`starVelocity` in `repoAnalyzer-enhanced.ts`). All tier methods return `BatchResult` with error tracking.
+  - `scanner.ts` — `ScanOrchestrator`: repo discovery, tier processing (Tier 1/2/3), metrics collection (no Claude calls). A Tier 1 deep scan makes 7 GitHub calls per repo (~20s each at the rate limit). Per-repo failures are logged, and a run with failures saves a system alert. Each successful Tier 1/2 GitHub refresh records a real daily star snapshot (`star_history`) and a `repo_metrics` row; growth velocity for tiering comes from those (`starVelocity` in `repoAnalyzer-enhanced.ts`). All tier methods return `BatchResult` with error tracking.
   - `analyzer.ts` — `AnalysisOrchestrator`: Claude analysis, batch processing, staleness-based repo selection. Takes service deps + a `saveBatchState` callback for DO state.
 - **`src/services/`** — Service classes that all extend `BaseService` (which provides `handleError()`, `jsonResponse()`, and D1 helper methods `dbRun`/`dbFirst`/`dbAll`/`dbBatch`):
   - `github.ts` / `github-enhanced.ts` — GitHub API client (search, metrics, contributors, rate limits)
@@ -117,12 +119,35 @@ The current schema is `database/schemas/schema-canonical.sql`; keep it in sync w
 - **BatchResult error tracking**: All scan/analysis operations return `BatchResult { total, succeeded, failed, errors[] }` instead of silently swallowing errors. Callers log warnings when `failed > 0`.
 - A failed analysis (refusal, truncation, API error) throws and is never saved; the repo keeps its previous analysis. `classifyAnalysisError()` in `claude.ts` decides whether the failure is persistent (sets a 24h cooldown on the repo) or transient.
 - Scheduled scans and batches hold heartbeat run locks in Durable Object storage (`src/utils/runLock.ts`), so a run that outlasts its cron interval is never started twice. Scheduling is cron-only.
-- Rate limiting for both GitHub and Claude APIs is handled via utilities in `src/utils/rateLimiter.ts`.
+- Rate limiting for GitHub and Claude is in `src/utils/rateLimiter.ts`: a token bucket where `maxRequests` per `windowMs` is the sustained rate and `maxBurst` is the bucket capacity (GitHub 30/min burst 10, search 10/min burst 3, Claude 30/min burst 5). Until Oct 2026 it refilled at the burst size, which made Tier 1 scans time out.
 
 ## Deployment
 
 ```bash
-wrangler secret put GITHUB_TOKEN
-wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put ANTHROPIC_API_KEY
+
+# 1. Schema changes first: each new file in database/migrations/
+npx wrangler d1 execute github-intelligence --remote --file=database/migrations/<file>.sql
+
+# 2. Main worker (+ dashboard). Auto-commits a version bump and tags it.
 npm run deploy
+
+# 3. Tail worker, when src/tail-worker.ts or wrangler.tail.toml changed
+npx wrangler deploy -c wrangler.tail.toml
 ```
+
+- Record a D1 restore point before a migration: `npx wrangler d1 time-travel info github-intelligence` (Time Travel keeps 30 days; `--timestamp=<ISO>` also works afterwards).
+- Roll back the worker with `npx wrangler rollback`.
+- After a deploy, the Durable Object keeps running the old code until in-flight work finishes (up to ~10 minutes); judge a deploy after that.
+
+## Operations: checking production
+
+- `GET /api/version` shows the live version, deployment id and upload time; `npx wrangler deployments list` shows recent deploys.
+- `GET /api/batch/history` shows the latest analysis batches (status, processed, failed).
+- Read-only D1 queries: `npx wrangler d1 execute github-intelligence --remote --json --command "<SQL>"`. Useful tables:
+  - `analyses`: model, `cost`, `input_tokens`/`output_tokens` (real usage) per analysis
+  - `alerts` where `type = 'system'`: scan/analysis runs with failures, with per-repo errors in `metadata`
+  - `tail_logs`: every Worker log line (indexed by `timestamp`); cron runs log `Mode: ...` and their results
+  - `repo_tiers`: `last_deep_scan` / `last_basic_scan` per repo, and `last_analysis_error` for repos in the 24h failure cooldown
+- Keep D1 queries cheap: filter on indexed columns, and avoid long `UNION` chains (see D1 gotchas).

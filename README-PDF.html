@@ -552,9 +552,9 @@
                 <td>
                     <ul>
                         <li><strong>24/7 automated</strong> monitoring</li>
-                        <li><strong>100% coverage</strong> of AI/ML ecosystem</li>
+                        <li><strong>Thousands of AI/ML repos</strong> tracked continuously</li>
                         <li><strong>Data-driven</strong> AI analysis</li>
-                        <li><strong>&lt;$100/month</strong> operational cost</li>
+                        <li><strong>~$100–150/month</strong> in Claude usage</li>
                         <li><strong>Real-time discovery</strong> (within hours)</li>
                         <li><strong>Unlimited scalability</strong> (no human limits)</li>
                     </ul>
@@ -565,7 +565,7 @@
         <h3>💰 Real Cost Comparison</h3>
         <ul>
             <li><strong>Human Analyst Team</strong>: $200,000-500,000/year</li>
-            <li><strong>This System</strong>: Less than your Netflix subscription</li>
+            <li><strong>This System</strong>: roughly $100–150/month of Claude usage at current volume, plus Cloudflare's $5/month Workers Paid plan</li>
             <li><strong>ROI</strong>: Find just ONE good investment and it pays for itself 1000x over</li>
         </ul>
         
@@ -584,9 +584,9 @@
             <div class="feature-box no-break">
                 <h3>🧠 AI-Powered Analysis</h3>
                 <ul>
-                    <li><strong>Claude Opus-4</strong> for deep research on high-potential projects</li>
-                    <li><strong>Claude Sonnet-4</strong> for comprehensive standard analysis</li>
-                    <li><strong>Claude Haiku</strong> for efficient quick scans</li>
+                    <li><strong>Claude Sonnet 5.5</strong> for full investment analysis of repos scoring 50+</li>
+                    <li><strong>Claude Haiku 5.5</strong> for efficient quick scans of the long tail</li>
+                    <li>Structured outputs: every analysis is schema-valid JSON</li>
                     <li>Multi-factor scoring algorithm</li>
                 </ul>
             </div>
@@ -594,10 +594,10 @@
             <div class="feature-box no-break">
                 <h3>⚡ Real-Time Intelligence</h3>
                 <ul>
-                    <li>Continuous GitHub monitoring</li>
-                    <li>Hourly batch analysis</li>
+                    <li>Hourly GitHub discovery scans</li>
+                    <li>Analysis batches every 30 minutes</li>
                     <li>Smart tier-based prioritization</li>
-                    <li>Complete database coverage</li>
+                    <li>Re-analysis only when a repository changes</li>
                 </ul>
             </div>
             
@@ -626,7 +626,7 @@
         <div class="architecture-box no-break">
             <p style="font-size: 1.1em; color: #00d4ff; font-weight: bold;">SYSTEM ARCHITECTURE</p>
             <p style="color: #e0e0e0; margin: 20px 0;">
-                GitHub API → Cloudflare Workers → Durable Objects → Claude AI (Opus/Sonnet/Haiku) → D1 Database/R2 Storage → React Dashboard
+                GitHub API → Cloudflare Workers → Durable Objects → Claude AI (Sonnet 5.5 / Haiku 5.5) → D1 Database/R2 Storage → React Dashboard
             </p>
             <p style="font-size: 0.9em; color: #00ff88;">
                 Powered by edge computing at 200+ global locations
@@ -636,41 +636,31 @@
         <h2>🎯 How It Works</h2>
         
         <h3>🔍 Repository Discovery Process</h3>
-        <p>Our intelligent system discovers AI/ML repositories through:</p>
+        <p>Every hour the agent searches GitHub with seven strategies:</p>
         
-        <ol>
-            <li class="no-break">
-                <strong style="color: #00d4ff;">GitHub API Search</strong>
+        <ol style="list-style: none; padding-left: 0;">
+            <li style="margin-bottom: 20px;">
+                <strong style="color: var(--neon-blue);">1. Established projects</strong>
                 <ul>
-                    <li>Searches for repositories with AI/ML topics: <code>machine-learning</code>, <code>artificial-intelligence</code>, <code>deep-learning</code>, <code>neural-network</code>, <code>llm</code>, <code>generative-ai</code></li>
-                    <li>Filters by minimum stars (10+) to ensure quality</li>
-                    <li>Monitors recently updated projects (pushed within 30 days)</li>
-                    <li>Tracks new repositories as they emerge</li>
+                    <li><code>topic:ai</code> or <code>topic:llm</code> with 500+ stars</li>
                 </ul>
             </li>
             
-            <li class="no-break">
-                <strong style="color: #ff0080;">Smart Filtering</strong>
+            <li style="margin-bottom: 20px;">
+                <strong style="color: var(--neon-pink);">2. New projects</strong>
                 <ul>
-                    <li>Excludes forks to focus on original work</li>
-                    <li>Prioritizes actively maintained projects</li>
-                    <li>Identifies projects with growing momentum</li>
-                    <li>Detects breakthrough technologies early</li>
+                    <li>Created in the last 30 days with <code>topic:ai</code> or <code>topic:llm</code> and 5+ stars</li>
                 </ul>
             </li>
             
-            <li class="no-break">
-                <strong style="color: #00ff88;">Continuous Monitoring</strong>
+            <li style="margin-bottom: 20px;">
+                <strong style="color: var(--neon-green);">3. Trending projects</strong>
                 <ul>
-                    <li>Hourly scans for new repositories</li>
-                    <li>Real-time tracking of star growth</li>
-                    <li>Immediate alerts for high-velocity projects</li>
-                    <li>24/7 coverage of the entire GitHub ecosystem</li>
+                    <li>Pushed in the last 7 days with <code>topic:ai</code> or <code>topic:machine-learning</code> (20+ stars), or Python projects with <code>topic:ai</code> (10+ stars)</li>
                 </ul>
             </li>
         </ol>
-        
-        <div class="page-break"></div>
+        <p>New repositories are saved and assigned a tier; forks and archived repositories are excluded from analysis. Each tier is refreshed from GitHub on its own schedule, and every refresh records the repository's real star count for the day, so growth is measured from actual history.</p>
         
         <h3>📊 Three-Tier Analysis System</h3>
         
@@ -678,8 +668,8 @@
             <div class="tier-header">🏆 TIER 1: PREMIUM ANALYSIS</div>
             <ul>
                 <li><span class="emoji">⭐</span> High-growth repositories with exceptional potential</li>
-                <li><span class="emoji">🤖</span> Analyzed by Claude Opus-4 for deep insights</li>
-                <li><span class="emoji">⏰</span> Scanned every few hours for latest updates</li>
+                <li><span class="emoji">🤖</span> Re-analyzed when it changes, at least every 7 days</li>
+                <li><span class="emoji">⏰</span> Deep-scanned every 6 hours</li>
                 <li><span class="emoji">📈</span> Includes technical moat & scalability assessment</li>
             </ul>
         </div>
@@ -688,8 +678,8 @@
             <div class="tier-header">🥈 TIER 2: STANDARD ANALYSIS</div>
             <ul>
                 <li><span class="emoji">⭐</span> Established projects with steady growth</li>
-                <li><span class="emoji">🤖</span> Analyzed by Claude Sonnet-4 for comprehensive review</li>
-                <li><span class="emoji">⏰</span> Scanned multiple times daily</li>
+                <li><span class="emoji">🤖</span> Re-analyzed when it changes, at least every 14 days</li>
+                <li><span class="emoji">⏰</span> Scanned every 12 hours</li>
                 <li><span class="emoji">📊</span> Full investment scoring and recommendations</li>
             </ul>
         </div>
@@ -698,8 +688,8 @@
             <div class="tier-header">🥉 TIER 3: DISCOVERY SCAN</div>
             <ul>
                 <li><span class="emoji">⭐</span> Emerging projects and hidden gems</li>
-                <li><span class="emoji">🤖</span> Quickly assessed by Claude Haiku</li>
-                <li><span class="emoji">⏰</span> Monitored regularly for breakout potential</li>
+                <li><span class="emoji">🤖</span> Re-analyzed when it changes, at least every 30 days</li>
+                <li><span class="emoji">⏰</span> Scanned every 2 days for breakout potential</li>
                 <li><span class="emoji">🔍</span> Efficient scanning to catch rising stars early</li>
             </ul>
         </div>
@@ -707,126 +697,75 @@
         <h2>🔬 What We Analyze</h2>
         
         <h3>📊 Repository Data Collection</h3>
-        <p>For each repository, our system collects and analyzes:</p>
         
         <div class="feature-grid">
-            <div class="feature-box no-break">
-                <h4>📈 Growth Metrics</h4>
+            <div class="feature-box">
+                <h4>📈 Growth (all tiers)</h4>
                 <ul>
+                    <li>Daily star snapshots</li>
                     <li>Star velocity (stars/day)</li>
-                    <li>Fork growth rate</li>
-                    <li>Contributor acceleration</li>
-                    <li>Community expansion</li>
-                    <li>Momentum indicators</li>
+                    <li>Fork counts</li>
+                    <li>Open issues</li>
                 </ul>
             </div>
             
-            <div class="feature-box no-break">
-                <h4>🏃 Activity Metrics</h4>
+            <div class="feature-box">
+                <h4>🏃 Activity (Tier 1 deep scan)</h4>
                 <ul>
-                    <li>Commit frequency</li>
-                    <li>Pull request volume</li>
-                    <li>Issue resolution time</li>
-                    <li>Release cadence</li>
-                    <li>Development velocity</li>
+                    <li>Commits and unique authors per day (30 days)</li>
+                    <li>Releases</li>
+                    <li>Pull requests: volume, merge time, contributors</li>
+                    <li>Issues: close rate, time to first response</li>
+                    <li>Active forks</li>
                 </ul>
             </div>
             
-            <div class="feature-box no-break">
-                <h4>👥 Team Analysis</h4>
+            <div class="feature-box">
+                <h4>👥 Team (high scorers)</h4>
                 <ul>
-                    <li>Core contributor count</li>
-                    <li>Contributor expertise</li>
-                    <li>Commit patterns</li>
-                    <li>Team stability</li>
-                    <li>Geographic distribution</li>
+                    <li>Top contributors' profiles (company, location, followers) for repos scoring 70+ on investment</li>
                 </ul>
             </div>
         </div>
         
-        <div class="page-break"></div>
-        
         <h3>🤖 AI-Powered Investment Analysis</h3>
-        <p>Each repository receives a comprehensive investment analysis including:</p>
+        <p>Claude returns a structured analysis (validated against a JSON schema) for each repository. An illustrative example:</p>
         
-        <div class="investment-scorecard no-break">
+        <div class="investment-scorecard">
             <pre>
 ┌─────────────────────────────────────────────────────────────┐
-│ 📊 INVESTMENT SCORECARD                                     │
+│ 📊 INVESTMENT SCORECARD                    (scores 0–100)   │
 ├─────────────────────────────────────────────────────────────┤
+│ Investment        78     Technical moat       52            │
+│ Innovation        76     Scalability          82            │
+│ Team              80     Developer adoption   96            │
+│ Market            88                                        │
 │                                                             │
-│ Overall Score: 8.5/10 ⭐⭐⭐⭐⭐⭐⭐⭐⭐                      │
+│ Recommendation: BUY   (strong-buy · buy · watch · pass)     │
 │                                                             │
-│ 💪 Key Strengths:                                          │
-│ • Exceptional growth rate (300% in 6 months)               │
-│ • Strong technical moat with novel approach                │
-│ • Experienced team from FAANG companies                    │
-│ • Clear monetization path identified                       │
-│                                                             │
-│ ⚠️  Risk Factors:                                          │
-│ • Heavy competition from established players               │
-│ • Dependency on single key contributor                     │
-│ • Limited documentation for enterprise adoption            │
-│                                                             │
-│ 💡 Investment Recommendation:                               │
-│ "Strong Buy - Early-stage opportunity with high growth     │
-│ potential. Consider seed investment before Series A."       │
-│                                                             │
-│ 🎯 Suggested Actions:                                       │
-│ • Schedule technical due diligence call                    │
-│ • Review competitor landscape analysis                     │
-│ • Connect with founding team                               │
+│ 💪 Strengths      ⚠️  Risks      ❓ Due-diligence questions  │
+│ 📈 Growth prediction (6–12 months)                          │
+│ 💡 Investment thesis (for buy / strong-buy)                 │
+│ 🥊 Competitive analysis                                     │
 └─────────────────────────────────────────────────────────────┘
             </pre>
         </div>
+        <p>Scores of 80+ on investment raise an investment-opportunity alert (90+ is urgent).</p>
         
         <h3>📋 Complete Analysis Output</h3>
-        <p>For each analyzed repository, investors receive:</p>
+        <p>Each analysis on the dashboard's Analysis page includes:</p>
         
-        <ol>
-            <li><strong>Executive Summary</strong>
-                <ul>
-                    <li>Investment score (1-10)</li>
-                    <li>One-line recommendation</li>
-                    <li>Key opportunity highlights</li>
-                </ul>
-            </li>
-            
-            <li><strong>Detailed Metrics</strong>
-                <ul>
-                    <li>Growth charts and projections</li>
-                    <li>Community health indicators</li>
-                    <li>Technical complexity assessment</li>
-                    <li>Market opportunity size</li>
-                </ul>
-            </li>
-            
-            <li><strong>Competitive Analysis</strong>
-                <ul>
-                    <li>Similar projects comparison</li>
-                    <li>Unique value propositions</li>
-                    <li>Market positioning</li>
-                </ul>
-            </li>
-            
-            <li><strong>Team Assessment</strong>
-                <ul>
-                    <li>Founder backgrounds</li>
-                    <li>Core team expertise</li>
-                    <li>Advisory board quality</li>
-                </ul>
-            </li>
-            
-            <li><strong>Investment Thesis</strong>
-                <ul>
-                    <li>Bull case scenario</li>
-                    <li>Bear case risks</li>
-                    <li>Expected ROI timeline</li>
-                </ul>
-            </li>
+        <ol style="list-style: decimal; padding-left: 30px;">
+            <li><strong>Scores</strong>: investment, innovation, team, market, technical moat, scalability and developer adoption (0–100)</li>
+            <li><strong>Recommendation</strong>: strong-buy, buy, watch or pass</li>
+            <li><strong>Executive summary</strong>: 3–4 paragraphs</li>
+            <li><strong>Strengths and risks</strong></li>
+            <li><strong>Due-diligence questions</strong></li>
+            <li><strong>Growth prediction</strong> for the next 6–12 months</li>
+            <li><strong>Investment thesis</strong> when the recommendation is buy or strong-buy</li>
+            <li><strong>Competitive analysis</strong></li>
         </ol>
-        
-        <div class="page-break"></div>
+        <p>Repositories scoring 50+ on the agent's own score are analyzed by Claude Sonnet 5.5 (about $0.03 each), the rest by Claude Haiku 5.5 (about $0.002). Every analysis records its real token usage and cost.</p>
         
         <h2>🎮 Dashboard Preview</h2>
         
@@ -862,9 +801,19 @@
                 <th>Description</th>
             </tr>
             <tr>
-                <td><code>/api/agent/init</code></td>
-                <td>POST</td>
-                <td>Initialize automated scanning</td>
+                <td><code>/api/version</code></td>
+                <td>GET</td>
+                <td>Deployed version, version id and upload time</td>
+            </tr>
+            <tr>
+                <td><code>/api/analyze/:owner/:repo</code></td>
+                <td>GET</td>
+                <td>Latest analysis for a repository (analyzes it if missing)</td>
+            </tr>
+            <tr>
+                <td><code>/api/batch/history</code></td>
+                <td>GET</td>
+                <td>Recent scheduled analysis batches</td>
             </tr>
             <tr>
                 <td><code>/api/status</code></td>
@@ -932,7 +881,12 @@
             <tr>
                 <td><code>/api/alerts</code></td>
                 <td>GET</td>
-                <td>High-priority notifications</td>
+                <td>Investment-opportunity and system alerts</td>
+            </tr>
+            <tr>
+                <td><code>/api/worker-metrics</code></td>
+                <td>GET</td>
+                <td>Activity over the last hour in 5-minute buckets</td>
             </tr>
         </table>
         
@@ -968,51 +922,46 @@
         
         <h3>Prerequisites</h3>
         <ul>
-            <li>Node.js 18+</li>
-            <li>Cloudflare account</li>
-            <li>GitHub token (for API access)</li>
-            <li>Anthropic API key (for Claude AI)</li>
+            <li>Node.js 22+ (required by Wrangler 4)</li>
+            <li>Cloudflare account on the Workers Paid plan (Durable Objects, D1, R2)</li>
+            <li>GitHub personal access token</li>
+            <li>Anthropic API key</li>
         </ul>
         
         <h3>1️⃣ Clone & Install</h3>
-        <pre><code># Clone the repository
-git clone https://github.com/nnkostov/cloudflare-agent-vibe-cline.git
+        <pre><code>git clone https://github.com/nnkostov/cloudflare-agent-vibe-cline.git
 cd cloudflare-agent-vibe-cline
 
-# Install dependencies
 npm install
 cd dashboard && npm install && cd ..</code></pre>
         
-        <h3>2️⃣ Configure Environment</h3>
-        <pre><code># Copy environment template
-cp .env.example .env
-
-# Edit .env with your credentials:
-# - GITHUB_TOKEN
-# - ANTHROPIC_API_KEY</code></pre>
+        <h3>2️⃣ Local Secrets</h3>
+        <pre><code># Wrangler reads local secrets from .dev.vars (gitignored)
+cp .env.example .dev.vars
+# then fill in GITHUB_TOKEN and ANTHROPIC_API_KEY</code></pre>
         
         <h3>3️⃣ Set Up Cloudflare Resources</h3>
-        <pre><code># Create D1 database
-wrangler d1 create github-agent-db
+        <pre><code>npx wrangler d1 create github-intelligence
+npx wrangler r2 bucket create github-analyses
 
-# Create R2 bucket  
-wrangler r2 bucket create github-agent-storage
+# Put the new D1 database_id into wrangler.toml and wrangler.tail.toml</code></pre>
+        
+        <h3>4️⃣ Initialize the Database</h3>
+        <pre><code>npx wrangler d1 execute github-intelligence --remote --file=database/schemas/schema-canonical.sql</code></pre>
+        <p>Later schema changes ship as files in <code>database/migrations/</code>; run each with the same command, before deploying the code that needs it.</p>
+        
+        <h3>5️⃣ Deploy</h3>
+        <pre><code>npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put ANTHROPIC_API_KEY
 
-# Update wrangler.toml with the generated IDs</code></pre>
-        
-        <h3>4️⃣ Initialize Database</h3>
-        <pre><code># Run database migrations
-wrangler d1 execute github-agent-db --file=./schema.sql</code></pre>
-        
-        <h3>5️⃣ Deploy to Production</h3>
-        <pre><code># Deploy the worker and dashboard
+# Builds the dashboard, deploys the Worker, and commits + tags a version bump
 npm run deploy
 
-# Your agent is now live! 🎉</code></pre>
+# Deploy the log-collecting tail Worker
+npx wrangler deploy -c wrangler.tail.toml</code></pre>
         
-        <h3>6️⃣ Initialize the Agent</h3>
-        <pre><code># Start automated scanning
-curl -X POST https://your-worker.workers.dev/api/agent/init</code></pre>
+        <h3>6️⃣ Scheduling</h3>
+        <p>Everything runs from the cron triggers in <code>wrangler.toml</code>; there is nothing to initialize. Discovery scans run hourly, analysis batches every 30 minutes, and a full sweep runs at 02:00 and 14:00 UTC.</p>
         
         <h2>📜 License</h2>
         <p>MIT License - see LICENSE for details</p>
