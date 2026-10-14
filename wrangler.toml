@@ -2,9 +2,12 @@ name = "github-ai-intelligence"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
-# Static site configuration for dashboard
-[site]
-bucket = "./dashboard/dist"
+# Dashboard static files (Workers Static Assets). Unknown paths fall back
+# to index.html for the React router; /api/* always runs the Worker.
+[assets]
+directory = "./dashboard/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 # Durable Objects binding
 [[durable_objects.bindings]]

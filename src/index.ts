@@ -2,7 +2,6 @@ import type { Env, Repository } from "./types";
 import { BaseService } from "./services/base";
 import { StorageEnhancedService } from "./services/storage-enhanced";
 import { PerformanceMonitor } from "./utils/performanceMonitor";
-import { getAssetFromKV } from "@cloudflare/kv-asset-handler";
 
 // Re-export the Durable Object
 export { default as GitHubAgent } from "./agents/GitHubAgent";
@@ -35,10 +34,6 @@ export default {
   },
 };
 
-// @ts-ignore
-import manifestJSON from "__STATIC_CONTENT_MANIFEST";
-const assetManifest = JSON.parse(manifestJSON);
-
 const INTERNAL_AGENT_PATHS = new Set(["/scheduled", "/init"]);
 
 class WorkerService extends BaseService {
@@ -63,127 +58,18 @@ class WorkerService extends BaseService {
       return new Response(null, { headers: this.corsHeaders });
     }
 
-    // Route API requests
+    // Route API requests. The dashboard's static files are served by
+    // Workers Static Assets ([assets] in wrangler.toml) before the Worker
+    // runs, including the SPA fallback to index.html, so only /api/*
+    // reaches this code.
     if (url.pathname.startsWith("/api/")) {
       return this.handleApiRequest(request, url.pathname);
     }
 
-    // In development, return a simple HTML page that redirects to the Vite dev server
-    if (this.env.ENVIRONMENT === "development") {
-      return new Response(
-        `<!DOCTYPE html>
-<html>
-<head>
-  <title>GitHub AI Intelligence</title>
-  <meta http-equiv="refresh" content="0; url=http://localhost:3003">
-</head>
-<body>
-  <p>Redirecting to development server at <a href="http://localhost:3003">http://localhost:3003</a>...</p>
-</body>
-</html>`,
-        {
-          headers: {
-            "Content-Type": "text/html",
-            ...this.corsHeaders,
-          },
-        },
-      );
-    }
-
-    // In production, try to serve static assets
-    try {
-      // @ts-ignore
-      const response = await getAssetFromKV(
-        {
-          request,
-          waitUntil: (promise: Promise<any>) => promise,
-        },
-        {
-          ASSET_NAMESPACE: (this.env as any).__STATIC_CONTENT,
-          ASSET_MANIFEST: assetManifest,
-        },
-      );
-
-      // Add CORS headers to asset responses
-      const newHeaders = new Headers(response.headers);
-      Object.entries(this.corsHeaders).forEach(([key, value]) => {
-        newHeaders.set(key, value);
-      });
-
-      // Add cache control headers for JavaScript files to prevent caching issues
-      if (url.pathname.endsWith(".js")) {
-        newHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
-        newHeaders.set("Pragma", "no-cache");
-        newHeaders.set("Expires", "0");
-      }
-
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders,
-      });
-    } catch (e) {
-      // If the asset is not found, try index.html for client-side routing
-      if (url.pathname !== "/" && !url.pathname.includes(".")) {
-        try {
-          const indexRequest = new Request(
-            new URL("/", request.url).toString(),
-          );
-          // @ts-ignore
-          const response = await getAssetFromKV(
-            {
-              request: indexRequest,
-              waitUntil: (promise: Promise<any>) => promise,
-            },
-            {
-              ASSET_NAMESPACE: (this.env as any).__STATIC_CONTENT,
-              ASSET_MANIFEST: assetManifest,
-            },
-          );
-
-          // Add CORS headers
-          const newHeaders = new Headers(response.headers);
-          Object.entries(this.corsHeaders).forEach(([key, value]) => {
-            newHeaders.set(key, value);
-          });
-
-          return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: newHeaders,
-          });
-        } catch (indexError) {
-          // If index.html is also not found, return 404
-        }
-      }
-
-      // Return 404 if no asset found
-      return new Response("Not Found", {
-        status: 404,
-        headers: this.corsHeaders,
-      });
-    }
-  }
-
-  private getContentType(path: string): string {
-    const ext = path.split(".").pop()?.toLowerCase();
-    const contentTypes: Record<string, string> = {
-      html: "text/html",
-      js: "application/javascript",
-      css: "text/css",
-      json: "application/json",
-      png: "image/png",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      gif: "image/gif",
-      svg: "image/svg+xml",
-      ico: "image/x-icon",
-      woff: "font/woff",
-      woff2: "font/woff2",
-      ttf: "font/ttf",
-      otf: "font/otf",
-    };
-    return contentTypes[ext || ""] || "application/octet-stream";
+    return new Response("Not Found", {
+      status: 404,
+      headers: this.corsHeaders,
+    });
   }
 
   private async handleApiRequest(
