@@ -12,7 +12,8 @@ export interface RateLimiterOptions {
 
 export class RateLimiter {
   private tokens: number;
-  private maxTokens: number;
+  private maxTokens: number; // bucket capacity (burst size)
+  private refillPerWindow: number; // sustained rate: tokens added per window
   private windowMs: number;
   private minDelay: number;
   private lastRefill: number;
@@ -21,6 +22,9 @@ export class RateLimiter {
 
   constructor(options: RateLimiterOptions) {
     this.maxTokens = options.maxBurst || options.maxRequests;
+    // Refill at maxRequests per window. This used to refill at maxTokens
+    // (the burst size), so e.g. "30/min, burst 10" actually ran at 10/min.
+    this.refillPerWindow = options.maxRequests;
     this.tokens = this.maxTokens;
     this.windowMs = options.windowMs;
     this.minDelay = options.minDelay || 0;
@@ -61,7 +65,7 @@ export class RateLimiter {
     // Check if we have tokens available
     if (this.tokens < 1) {
       // Calculate wait time until next token
-      const timeUntilNextToken = this.windowMs / this.maxTokens;
+      const timeUntilNextToken = this.windowMs / this.refillPerWindow;
       setTimeout(() => this.processQueue(), timeUntilNextToken);
       return;
     }
@@ -86,7 +90,7 @@ export class RateLimiter {
   private refillTokens(): void {
     const now = Date.now();
     const timePassed = now - this.lastRefill;
-    const tokensToAdd = (timePassed / this.windowMs) * this.maxTokens;
+    const tokensToAdd = (timePassed / this.windowMs) * this.refillPerWindow;
 
     this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
     this.lastRefill = now;
@@ -113,7 +117,7 @@ export class RateLimiter {
     this.refillTokens();
     if (this.tokens >= 1) return 0;
     const tokensNeeded = 1 - this.tokens;
-    return Math.ceil((tokensNeeded / this.maxTokens) * this.windowMs);
+    return Math.ceil((tokensNeeded / this.refillPerWindow) * this.windowMs);
   }
 
   /**

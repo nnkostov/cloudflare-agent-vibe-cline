@@ -290,6 +290,7 @@ export class ScanOrchestrator {
           // Rate limiting
           await new Promise((resolve) => setTimeout(resolve, 200));
         } catch (error) {
+          console.error(`Scan failed for ${repo?.full_name ?? repoId}:`, error);
           result.failed++;
           result.errors.push({
             id: repoId,
@@ -390,6 +391,7 @@ export class ScanOrchestrator {
           // Lighter rate limiting
           await new Promise((resolve) => setTimeout(resolve, 200));
         } catch (error) {
+          console.error(`Scan failed for ${repo?.full_name ?? repoId}:`, error);
           result.failed++;
           result.errors.push({
             id: repoId,
@@ -454,6 +456,7 @@ export class ScanOrchestrator {
 
             result.succeeded++;
           } catch (error) {
+            console.error(`Scan failed for ${repo.full_name}:`, error);
             result.failed++;
             result.errors.push({
               id: repoId,
