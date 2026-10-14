@@ -1,4 +1,4 @@
-import type { Repository, Score, Env, SCORING, ClaudeModel } from "../types";
+import type { Repository, Score, ClaudeModel } from "../types";
 import { BaseService } from "../services/base";
 import { SCORING as ScoringConfig, CONFIG } from "../types";
 
@@ -54,7 +54,6 @@ export class RepoAnalyzer extends BaseService {
    * Calculate all scoring factors
    */
   private async calculateFactors(repo: Repository) {
-    const ageInDays = this.getDaysSince(repo.created_at);
     const daysSinceUpdate = this.getDaysSince(repo.updated_at);
 
     return {

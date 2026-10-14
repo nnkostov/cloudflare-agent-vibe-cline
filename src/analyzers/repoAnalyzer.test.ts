@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RepoAnalyzer } from "./repoAnalyzer";
-import type { Repository, Env, Score } from "../types";
+import type { Repository, Env } from "../types";
 
 describe("RepoAnalyzer", () => {
   const mockEnv: Env = {

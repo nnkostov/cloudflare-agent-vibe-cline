@@ -289,15 +289,12 @@ describe("AnalysisOrchestrator", () => {
       ]);
 
       // First repo fails, second succeeds
-      let callCount = 0;
       mocks.getRepository.mockImplementation((id: string) => {
-        callCount++;
         if (id === "r1") return Promise.resolve(mockRepo);
         return Promise.resolve({ ...mockRepo, id: "r2", full_name: "o/r2" });
       });
 
       // Make analysis throw for the first repo
-      const originalAnalyze = mocks.analyze;
       let analyzeCallCount = 0;
       mocks.analyze.mockImplementation(() => {
         analyzeCallCount++;

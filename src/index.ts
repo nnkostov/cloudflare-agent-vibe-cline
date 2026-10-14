@@ -14,7 +14,7 @@ export default {
   async scheduled(
     event: ScheduledEvent,
     env: Env,
-    ctx: ExecutionContext,
+    _ctx: ExecutionContext,
   ): Promise<void> {
     console.log(`[Cron] Triggered: ${event.cron} at ${new Date().toISOString()}`);
     const id = env.GITHUB_AGENT.idFromName("main");
@@ -1364,9 +1364,6 @@ class WorkerService extends BaseService {
    */
   private async handleAnalysisStats(): Promise<Response> {
     return this.handleError(async () => {
-      const { StorageService } = await import("./services/storage");
-      const storage = new StorageService(this.env);
-
       // Use active filtering (excluding archived and fork repositories) for consistency
       // This matches the filtering used by DiagnosticsService and StorageUnifiedService
       const tierCounts = await Promise.all([

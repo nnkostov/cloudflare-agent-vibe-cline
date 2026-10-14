@@ -81,7 +81,6 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
     saveForkAnalysis: vi.fn().mockResolvedValue(undefined),
 
     // RepoAnalyzerEnhanced
-    analyzeWithMetrics: vi.fn().mockResolvedValue({ total: 75 }),
     calculateGrowthVelocity: vi.fn().mockReturnValue(5),
     calculateEngagementScoreForTier: vi.fn().mockReturnValue(50),
   };
@@ -120,7 +119,6 @@ function createMockDeps(): { deps: ScanDeps; mocks: Record<string, any> } {
       saveForkAnalysis: mocks.saveForkAnalysis,
     } as any,
     analyzerEnhanced: {
-      analyzeWithMetrics: mocks.analyzeWithMetrics,
       calculateGrowthVelocity: mocks.calculateGrowthVelocity,
       calculateEngagementScoreForTier: mocks.calculateEngagementScoreForTier,
     } as any,

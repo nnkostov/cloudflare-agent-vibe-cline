@@ -81,7 +81,7 @@ export class GitHubService extends BaseService {
             return response.data.items.map(this.mapGitHubRepoToRepository);
           } catch (error) {
             console.error("Error searching GitHub repos:", error);
-            throw new Error(`Failed to search GitHub repositories: ${error}`);
+            throw new Error(`Failed to search GitHub repositories: ${error}`, { cause: error });
           }
         });
       });
@@ -112,7 +112,7 @@ export class GitHubService extends BaseService {
             `Error getting repo details for ${owner}/${name}:`,
             error,
           );
-          throw new Error(`Failed to get repository details: ${error}`);
+          throw new Error(`Failed to get repository details: ${error}`, { cause: error });
         }
       });
     });
@@ -168,7 +168,7 @@ export class GitHubService extends BaseService {
             `Error getting repo metrics for ${owner}/${name}:`,
             error,
           );
-          throw new Error(`Failed to get repository metrics: ${error}`);
+          throw new Error(`Failed to get repository metrics: ${error}`, { cause: error });
         }
       });
     });
@@ -267,7 +267,7 @@ export class GitHubService extends BaseService {
                 `Error getting contributors for ${owner}/${name}:`,
                 error,
               );
-              throw new Error(`Failed to get contributors: ${error}`);
+              throw new Error(`Failed to get contributors: ${error}`, { cause: error });
             }
           });
         });
@@ -308,7 +308,7 @@ export class GitHubService extends BaseService {
           return response.data.items.map(this.mapGitHubRepoToRepository);
         } catch (error) {
           console.error("Error searching recent high-growth repos:", error);
-          throw new Error(`Failed to search recent repositories: ${error}`);
+          throw new Error(`Failed to search recent repositories: ${error}`, { cause: error });
         }
       });
     });
@@ -408,7 +408,7 @@ export class GitHubService extends BaseService {
         };
       } catch (error) {
         console.error("Error checking rate limit:", error);
-        throw new Error(`Failed to check rate limit: ${error}`);
+        throw new Error(`Failed to check rate limit: ${error}`, { cause: error });
       }
     });
   }

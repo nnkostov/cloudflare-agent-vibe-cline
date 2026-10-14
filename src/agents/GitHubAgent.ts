@@ -136,7 +136,7 @@ export class GitHubAgent {
     try {
       // Dynamic route: /analyze/:owner/:repo
       const analyzeMatch = url.pathname.match(
-        /^\/analyze\/([^\/]+)\/([^\/]+)$/,
+        /^\/analyze\/([^/]+)\/([^/]+)$/,
       );
       if (analyzeMatch) {
         return this.handleAnalyzeByPath(analyzeMatch[1], analyzeMatch[2]);
@@ -413,7 +413,7 @@ export class GitHubAgent {
       }
       repo = stored;
     } else {
-      let stored = await this.storage.getRepositoryByName(repoOwner, repoName);
+      const stored = await this.storage.getRepositoryByName(repoOwner, repoName);
       if (stored) {
         repo = stored;
       } else {
@@ -592,7 +592,7 @@ export class GitHubAgent {
   private async handleGetActiveBatch(): Promise<Response> {
     const allKeys = await this.state.storage.list({ prefix: "batch:" });
 
-    for (const [key, value] of allKeys.entries()) {
+    for (const value of allKeys.values()) {
       const batch = value as any;
       if (batch.status === "active") {
         const lastUpdate = batch.lastUpdate || batch.startTime;
@@ -656,7 +656,7 @@ export class GitHubAgent {
     const allKeys = await this.state.storage.list({ prefix: "batch:" });
     const batches = [];
 
-    for (const [key, value] of allKeys.entries()) {
+    for (const value of allKeys.values()) {
       batches.push(value);
     }
 

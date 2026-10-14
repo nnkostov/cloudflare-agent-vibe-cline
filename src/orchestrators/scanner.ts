@@ -257,23 +257,11 @@ export class ScanOrchestrator {
             forks: forks ?? undefined,
           });
 
-          // Read all metrics from D1 for scoring
+          // Read stored metrics for the tier calculation
           const cached =
             await this.deps.storageEnhanced.getComprehensiveMetrics(repoId);
 
-          const score = await this.deps.analyzerEnhanced.analyzeWithMetrics(
-            repo,
-            {
-              commits: cached.commits,
-              releases: cached.releases,
-              pullRequests: cached.pullRequests,
-              issues: cached.issues,
-              stars: cached.stars,
-              forks: cached.forks,
-            },
-          );
-
-          // Update tier based on new score
+          // Update tier from real growth and engagement
           const growthVelocity =
             this.deps.analyzerEnhanced.calculateGrowthVelocity(
               repo.stars,
