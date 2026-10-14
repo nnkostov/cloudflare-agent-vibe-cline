@@ -1,5 +1,6 @@
 import type { Env, Repository } from "./types";
 import { BaseService } from "./services/base";
+import packageJson from "../package.json";
 import { StorageEnhancedService } from "./services/storage-enhanced";
 import { PerformanceMonitor } from "./utils/performanceMonitor";
 
@@ -101,9 +102,6 @@ class WorkerService extends BaseService {
       "/api-metrics": () => this.handleAPIMetrics(request),
       "/analyze/batch": () => this.handleBatchAnalyze(request),
       "/analyze/single": () => this.handleSingleAnalyze(request),
-      "/analyze/batch/status": () => this.handleBatchStatus(request),
-      "/analyze/batch/stop": () => this.handleBatchStop(request),
-      "/analyze/batch/clear": () => this.handleBatchClear(),
       "/batch/active": () => this.handleGetActiveBatch(),
       "/batch/history": () => this.handleGetBatchHistory(),
       "/analysis/stats": () => this.handleAnalysisStats(),
@@ -1241,125 +1239,6 @@ class WorkerService extends BaseService {
   }
 
   /**
-   * Handle batch analysis status request
-   */
-  private async handleBatchStatus(request: Request): Promise<Response> {
-    return this.handleError(async () => {
-      const url = new URL(request.url);
-      const batchId = url.searchParams.get("batchId");
-
-      if (!batchId) {
-        return this.jsonResponse({ error: "batchId parameter required" }, 400);
-      }
-
-      // Forward to Durable Object to get batch status
-      const id = this.env.GITHUB_AGENT.idFromName("main");
-      const agent = this.env.GITHUB_AGENT.get(id);
-
-      const statusResponse = await agent.fetch(
-        new Request("http://internal/batch/status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchId }),
-        }),
-      );
-
-      if (!statusResponse.ok) {
-        const error = await statusResponse.text();
-        return this.jsonResponse(
-          {
-            error: "Failed to get batch status",
-            details: error,
-          },
-          statusResponse.status,
-        );
-      }
-
-      const statusData = (await statusResponse.json()) as any;
-      return this.jsonResponse(statusData);
-    }, "get batch analysis status");
-  }
-
-  /**
-   * Handle batch stop request - stops a running batch analysis
-   */
-  private async handleBatchStop(request: Request): Promise<Response> {
-    return this.handleError(async () => {
-      const url = new URL(request.url);
-      const batchId = url.searchParams.get("batchId");
-
-      if (!batchId) {
-        return this.jsonResponse({ error: "batchId parameter required" }, 400);
-      }
-
-      // Forward to Durable Object to stop the batch
-      const id = this.env.GITHUB_AGENT.idFromName("main");
-      const agent = this.env.GITHUB_AGENT.get(id);
-
-      const stopResponse = await agent.fetch(
-        new Request("http://internal/batch/stop", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchId }),
-        }),
-      );
-
-      if (!stopResponse.ok) {
-        const error = await stopResponse.text();
-        return this.jsonResponse(
-          {
-            error: "Failed to stop batch",
-            details: error,
-          },
-          stopResponse.status,
-        );
-      }
-
-      const result = (await stopResponse.json()) as any;
-      return this.jsonResponse({
-        message: "Batch analysis stopped",
-        batchId,
-        ...result,
-      });
-    }, "stop batch analysis");
-  }
-
-  /**
-   * Handle batch clear request - clears all batch data
-   */
-  private async handleBatchClear(): Promise<Response> {
-    return this.handleError(async () => {
-      // Forward to Durable Object to clear all batches
-      const id = this.env.GITHUB_AGENT.idFromName("main");
-      const agent = this.env.GITHUB_AGENT.get(id);
-
-      const clearResponse = await agent.fetch(
-        new Request("http://internal/batch/clear", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-
-      if (!clearResponse.ok) {
-        const error = await clearResponse.text();
-        return this.jsonResponse(
-          {
-            error: "Failed to clear batches",
-            details: error,
-          },
-          clearResponse.status,
-        );
-      }
-
-      const result = (await clearResponse.json()) as any;
-      return this.jsonResponse({
-        message: "All batch data cleared",
-        ...result,
-      });
-    }, "clear batch data");
-  }
-
-  /**
    * Handle analysis statistics request - provides global analysis progress
    */
   private async handleAnalysisStats(): Promise<Response> {
@@ -1540,269 +1419,100 @@ class WorkerService extends BaseService {
   }
 
   /**
-   * Handle System Heartbeat request - provides organic system activity visualization
+   * System activity over the last hour in 12 five-minute buckets, counted
+   * from the tail worker's logs (indexed by timestamp): dashboard API
+   * requests, Claude analyses, GitHub API calls, and all other log lines.
+   * Each component is scaled against its busiest bucket in the hour, and
+   * the heartbeat against the busiest bucket overall (100 = the hour's peak).
    */
   private async handleWorkerMetrics(): Promise<Response> {
     return this.handleError(async () => {
-      // Get performance data from the performance monitor
-      const performanceReport = this.performanceMonitor.getReport();
-      const performanceSummary = this.performanceMonitor.getSummary();
+      const nowSec = Math.floor(Date.now() / 1000);
+      const since = new Date((nowSec - 3600) * 1000).toISOString();
+      const { results } = await this.env.DB.prepare(
+        `SELECT
+           CAST((?1 - CAST(strftime('%s', timestamp) AS INTEGER)) / 300 AS INTEGER) AS bucket,
+           SUM(request_url LIKE '%/api/%') AS dashboard,
+           SUM(log_message LIKE '[API CALL] Claude API Response%') AS analyses,
+           SUM(log_message LIKE '[API CALL] GitHub%') AS github,
+           COUNT(*) AS events
+         FROM tail_logs
+         WHERE timestamp >= ?2
+         GROUP BY bucket`,
+      )
+        .bind(nowSec, since)
+        .all<{
+          bucket: number;
+          dashboard: number;
+          analyses: number;
+          github: number;
+          events: number;
+        }>();
 
-      // Generate heartbeat metrics based on multiple system activities
-      const now = Date.now();
-      const metrics = [];
+      const byBucket = new Map(results.map((r) => [r.bucket, r]));
+      const counts = Array.from({ length: 12 }, (_, i) => {
+        const r = byBucket.get(11 - i);
+        return {
+          dashboard: r?.dashboard ?? 0,
+          analyses: r?.analyses ?? 0,
+          github: r?.github ?? 0,
+          other: r ? r.events - r.dashboard - r.analyses - r.github : 0,
+          events: r?.events ?? 0,
+        };
+      });
+      const peak = (key: keyof (typeof counts)[number]) =>
+        Math.max(1, ...counts.map((c) => c[key]));
+      const scale = (value: number, max: number) =>
+        Math.round((100 * value) / max);
 
-      // Create 12 data points representing the last 60 minutes (5-minute intervals)
-      for (let i = 11; i >= 0; i--) {
-        const timestamp = new Date(now - i * 5 * 60 * 1000);
-        const timestampStr = timestamp.toISOString();
+      const metrics = counts.map((c, i) => {
+        const components = {
+          apiActivity: scale(c.dashboard, peak("dashboard")),
+          analysisActivity: scale(c.analyses, peak("analyses")),
+          dbActivity: scale(c.github, peak("github")),
+          systemActivity: scale(c.other, peak("other")),
+        };
+        return {
+          timestamp: new Date((nowSec - (11 - i) * 300) * 1000).toISOString(),
+          heartbeat: scale(c.events, peak("events")),
+          components,
+          counts: c,
+          activityType:
+            c.events === 0
+              ? "idle"
+              : this.getActivityType(
+                  components.apiActivity,
+                  components.analysisActivity,
+                  components.dbActivity,
+                  components.systemActivity,
+                ),
+        };
+      });
 
-        // Calculate individual activity components
-        const apiActivity = this.calculateApiActivity(
-          timestamp,
-          performanceReport,
-        );
-        const analysisActivity = this.calculateAnalysisActivity(
-          timestamp,
-          performanceReport,
-        );
-        const dbActivity = this.calculateDatabaseActivity(
-          timestamp,
-          performanceReport,
-        );
-        const systemActivity = this.calculateSystemActivity(
-          timestamp,
-          performanceReport,
-        );
-
-        // Calculate weighted heartbeat score
-        const heartbeatScore = this.calculateHeartbeatScore(
-          apiActivity,
-          analysisActivity,
-          dbActivity,
-          systemActivity,
-          timestamp,
-        );
-
-        // Add organic variation to make it feel alive
-        const organicVariation =
-          (Math.sin(now / 10000) + Math.cos(now / 7000)) * 3;
-        const finalHeartbeat = Math.max(
-          15,
-          Math.min(95, heartbeatScore + organicVariation),
-        );
-
-        metrics.push({
-          timestamp: timestampStr,
-          heartbeat: Math.round(finalHeartbeat * 100) / 100,
-          components: {
-            apiActivity: Math.round(apiActivity * 100) / 100,
-            analysisActivity: Math.round(analysisActivity * 100) / 100,
-            dbActivity: Math.round(dbActivity * 100) / 100,
-            systemActivity: Math.round(systemActivity * 100) / 100,
-          },
-          activityType: this.getActivityType(
-            apiActivity,
-            analysisActivity,
-            dbActivity,
-            systemActivity,
-          ),
-        });
-      }
-
-      return this.jsonResponse({
+      const response = this.jsonResponse({
         timestamp: new Date().toISOString(),
         type: "heartbeat",
+        source: "tail_logs",
         metrics,
         summary: {
           averageHeartbeat:
             Math.round(
-              (metrics.reduce((sum, m) => sum + m.heartbeat, 0) /
-                metrics.length) *
+              (metrics.reduce((sum, m) => sum + m.heartbeat, 0) / metrics.length) *
                 100,
             ) / 100,
           peakHeartbeat: Math.max(...metrics.map((m) => m.heartbeat)),
           currentRhythm: this.getHeartbeatRhythm(metrics),
           systemHealth: this.getSystemHealth(metrics),
-        },
-        performance: {
-          totalExecutionTime: performanceReport.total,
-          checkpoints: Object.keys(performanceReport.checkpoints).length,
-          warnings: performanceReport.warnings.length,
-          memoryUsage: performanceReport.memoryUsage,
-          summary: performanceSummary,
+          eventsLastHour: counts.reduce((sum, c) => sum + c.events, 0),
         },
       });
+      // Buckets are 5 minutes wide; let browsers reuse a result for 30s so
+      // the sidebar's 10s polling doesn't re-query D1 each time.
+      response.headers.set("Cache-Control", "private, max-age=30");
+      response.headers.delete("Pragma");
+      response.headers.delete("Expires");
+      return response;
     }, "get system heartbeat");
-  }
-
-  /**
-   * Calculate API activity component (40% of heartbeat)
-   */
-  private calculateApiActivity(
-    timestamp: Date,
-    performanceReport: any,
-  ): number {
-    const hour = timestamp.getHours();
-    const minute = timestamp.getMinutes();
-
-    // Simulate API activity based on time patterns and performance data
-    let baseActivity = 20;
-
-    // Business hours boost
-    if (hour >= 9 && hour <= 17) {
-      baseActivity += 30;
-    } else if (hour >= 18 && hour <= 21) {
-      baseActivity += 20;
-    }
-
-    // Performance-based activity
-    if (performanceReport.total && performanceReport.total > 100) {
-      baseActivity += Math.min(30, performanceReport.total / 10);
-    }
-
-    // Add realistic variation
-    const timeVariation = Math.sin((hour * 60 + minute) / 100) * 15;
-    const randomSpikes = Math.random() > 0.8 ? Math.random() * 25 : 0;
-
-    return Math.max(
-      5,
-      Math.min(85, baseActivity + timeVariation + randomSpikes),
-    );
-  }
-
-  /**
-   * Calculate AI analysis activity component (30% of heartbeat)
-   */
-  private calculateAnalysisActivity(
-    timestamp: Date,
-    performanceReport: any,
-  ): number {
-    const hour = timestamp.getHours();
-
-    // Simulate analysis workload patterns
-    let baseActivity = 15;
-
-    // Peak analysis times (when batch processing typically runs)
-    if (hour === 2 || hour === 8 || hour === 14 || hour === 20) {
-      baseActivity += 40; // Scheduled analysis periods
-    }
-
-    // Performance indicators
-    if (performanceReport.warnings && performanceReport.warnings.length > 0) {
-      baseActivity += performanceReport.warnings.length * 8;
-    }
-
-    // Checkpoints indicate active processing
-    if (
-      performanceReport.checkpoints &&
-      Object.keys(performanceReport.checkpoints).length > 3
-    ) {
-      baseActivity += 20;
-    }
-
-    // Random analysis bursts
-    const analysisBurst = Math.random() > 0.85 ? Math.random() * 30 : 0;
-
-    return Math.max(0, Math.min(80, baseActivity + analysisBurst));
-  }
-
-  /**
-   * Calculate database activity component (20% of heartbeat)
-   */
-  private calculateDatabaseActivity(
-    timestamp: Date,
-    performanceReport: any,
-  ): number {
-    const hour = timestamp.getHours();
-    const dayOfWeek = timestamp.getDay();
-
-    let baseActivity = 25;
-
-    // Higher DB activity during business hours
-    if (hour >= 8 && hour <= 18 && dayOfWeek >= 1 && dayOfWeek <= 5) {
-      baseActivity += 25;
-    }
-
-    // Memory usage indicates DB operations
-    if (performanceReport.memoryUsage) {
-      baseActivity += Math.min(
-        20,
-        (performanceReport.memoryUsage / (1024 * 1024)) * 5,
-      );
-    }
-
-    // Execution time suggests DB queries
-    if (performanceReport.total && performanceReport.total > 50) {
-      baseActivity += Math.min(15, performanceReport.total / 20);
-    }
-
-    const dbVariation = Math.cos(Date.now() / 15000) * 10;
-
-    return Math.max(10, Math.min(70, baseActivity + dbVariation));
-  }
-
-  /**
-   * Calculate system activity component (10% of heartbeat)
-   */
-  private calculateSystemActivity(
-    timestamp: Date,
-    performanceReport: any,
-  ): number {
-    const minute = timestamp.getMinutes();
-
-    let baseActivity = 20;
-
-    // Scheduled maintenance patterns
-    if (minute === 0 || minute === 30) {
-      baseActivity += 15; // Top and bottom of hour maintenance
-    }
-
-    // System health indicators
-    if (performanceReport.warnings && performanceReport.warnings.length === 0) {
-      baseActivity += 10; // Healthy system bonus
-    }
-
-    // Background processing
-    const backgroundNoise = Math.sin(Date.now() / 20000) * 8;
-
-    return Math.max(5, Math.min(50, baseActivity + backgroundNoise));
-  }
-
-  /**
-   * Calculate weighted heartbeat score with time-of-day multipliers
-   */
-  private calculateHeartbeatScore(
-    apiActivity: number,
-    analysisActivity: number,
-    dbActivity: number,
-    systemActivity: number,
-    timestamp: Date,
-  ): number {
-    // Weighted combination
-    const baseScore =
-      apiActivity * 0.4 +
-      analysisActivity * 0.3 +
-      dbActivity * 0.2 +
-      systemActivity * 0.1;
-
-    // Time-of-day multipliers
-    const hour = timestamp.getHours();
-    const dayOfWeek = timestamp.getDay();
-
-    let timeMultiplier = 1.0;
-
-    if (hour >= 9 && hour <= 17 && dayOfWeek >= 1 && dayOfWeek <= 5) {
-      timeMultiplier = 1.2; // Business hours boost
-    } else if (hour >= 18 && hour <= 21) {
-      timeMultiplier = 1.0; // Evening activity
-    } else if (hour >= 22 || hour <= 6) {
-      timeMultiplier = 0.7; // Night/early morning
-    } else if (dayOfWeek === 0 || dayOfWeek === 6) {
-      timeMultiplier = 0.8; // Weekend
-    }
-
-    return baseScore * timeMultiplier;
   }
 
   /**
@@ -1943,16 +1653,17 @@ class WorkerService extends BaseService {
    */
   private async handleVersion(): Promise<Response> {
     return this.handleError(async () => {
-      // Read version from package.json or environment
-      const packageVersion = "2.0.15"; // Updated by auto-versioning
-      const version = packageVersion;
-      const buildTimestamp = new Date().toISOString();
-      const gitCommit = "unknown";
+      // version is bumped in package.json by scripts/auto-version.js on
+      // deploy; the deployed version id and upload time come from the
+      // version metadata binding.
+      const version = packageJson.version;
+      const metadata = this.env.CF_VERSION_METADATA;
 
       return this.jsonResponse({
         version,
-        buildTimestamp,
-        gitCommit,
+        versionId: metadata?.id ?? null,
+        buildTimestamp: metadata?.timestamp ?? null,
+        gitCommit: "unknown",
         formatted: `v${version}`,
         environment: this.env.ENVIRONMENT || "production",
         timestamp: new Date().toISOString(),

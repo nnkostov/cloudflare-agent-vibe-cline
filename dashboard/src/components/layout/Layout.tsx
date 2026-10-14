@@ -687,42 +687,27 @@ export default function Layout({ children }: LayoutProps) {
             
             {/* Live Activity Bars - Real System Heartbeat */}
             <div className="activity-bars">
-              {/* Generate real-time activity bars based on actual system metrics */}
-              {[...Array(12)].map((_, i) => {
-                // Create realistic heartbeat pattern based on real system activity
-                const baseHeight = 20;
-                const apiBoost = (apiUsage / 100) * 30;
-                const analysisBoost = (analysisProgress / 100) * 25;
-                const queueBoost = (queueLoad / 100) * 20;
-                const randomVariation = Math.sin(Date.now() / 1000 + i) * 10;
-                
-                const height = Math.max(15, Math.min(85, 
-                  baseHeight + apiBoost + analysisBoost + queueBoost + randomVariation
-                ));
-                
-                // Determine activity type based on which metric is highest
-                let activityType = 'system-maintenance';
-                if (apiUsage > analysisProgress && apiUsage > queueLoad) {
-                  activityType = 'user-interaction';
-                } else if (analysisProgress > queueLoad) {
-                  activityType = 'ai-processing';
-                } else if (queueLoad > 30) {
-                  activityType = 'data-operations';
-                }
-                
+              {/* One bar per five-minute bucket over the last hour, from logged
+                  activity; height is relative to the hour's busiest bucket */}
+              {(workerMetrics?.metrics ?? []).map((m, i) => {
+                const height = Math.max(4, m.heartbeat);
+                const time = new Date(m.timestamp).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
                 return (
                   <div
-                    key={i}
+                    key={m.timestamp}
                     className="heartbeat-bar"
                     style={{
                       animationDelay: `${i * 0.2}s`,
                       height: `${height}%`,
-                      animationDuration: `${2 + (height / 100)}s`
+                      animationDuration: `${2 + height / 100}s`,
                     }}
-                    title={`Real-time System Activity: ${Math.round(height)}%
-API Activity: ${apiUsage}% | Analysis: ${Math.round(analysisProgress)}%
-Queue Load: ${queueLoad}% | Activity Type: ${activityType.replace('-', ' ')}`}
-                    data-activity-type={activityType}
+                    title={`${time}: ${m.heartbeat}% of the hour's peak
+Claude analyses: ${m.counts.analyses} | GitHub calls: ${m.counts.github}
+Dashboard requests: ${m.counts.dashboard} | Other events: ${m.counts.other}`}
+                    data-activity-type={m.activityType}
                   />
                 );
               })}

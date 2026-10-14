@@ -278,49 +278,6 @@ class ApiClient {
     });
   }
 
-  // Batch analysis status
-  getBatchAnalysisStatus = async (batchId: string) => {
-    return this.request<{
-      batchId: string;
-      status: 'running' | 'completed' | 'failed' | 'not_found';
-      progress?: {
-        total: number;
-        completed: number;
-        failed: number;
-        currentRepository: string | null;
-        startTime: number;
-        estimatedCompletion: number | null;
-      };
-      error?: string;
-    }>(`/analyze/batch/status?batchId=${encodeURIComponent(batchId)}`);
-  }
-
-  // Stop batch analysis
-  stopBatchAnalysis = async (batchId: string) => {
-    return this.request<{
-      message: string;
-      batchId: string;
-      stoppedAt?: {
-        completed: number;
-        failed: number;
-        total: number;
-        currentRepository: string | null;
-      };
-    }>(`/analyze/batch/stop?batchId=${encodeURIComponent(batchId)}`, {
-      method: 'POST',
-    });
-  }
-
-  // Clear all batch data
-  clearBatchData = async () => {
-    return this.request<{
-      message: string;
-      batchesCleared: number;
-    }>('/analyze/batch/clear', {
-      method: 'POST',
-    });
-  }
-
   // Analysis statistics
   getAnalysisStats = async () => {
     return this.request<{
@@ -359,33 +316,36 @@ class ApiClient {
   }
 
   // System Heartbeat
+  // Real activity over the last hour, in 12 five-minute buckets
   getWorkerMetrics = async () => {
     return this.request<{
       timestamp: string;
       type: 'heartbeat';
+      source: 'tail_logs';
       metrics: Array<{
         timestamp: string;
-        heartbeat: number;
+        heartbeat: number; // 0-100, relative to the busiest bucket in the hour
         components: {
           apiActivity: number;
           analysisActivity: number;
           dbActivity: number;
           systemActivity: number;
         };
-        activityType: 'user-interaction' | 'ai-processing' | 'data-operations' | 'system-maintenance';
+        counts: {
+          dashboard: number;
+          analyses: number;
+          github: number;
+          other: number;
+          events: number;
+        };
+        activityType: 'user-interaction' | 'ai-processing' | 'data-operations' | 'system-maintenance' | 'idle';
       }>;
       summary: {
         averageHeartbeat: number;
         peakHeartbeat: number;
         currentRhythm: 'steady' | 'active' | 'intense';
         systemHealth: 'high-activity' | 'normal' | 'low-activity';
-      };
-      performance: {
-        totalExecutionTime: number;
-        checkpoints: number;
-        warnings: number;
-        memoryUsage?: number;
-        summary: string;
+        eventsLastHour: number;
       };
     }>('/worker-metrics');
   }

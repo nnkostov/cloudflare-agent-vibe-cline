@@ -12,6 +12,9 @@ export interface Env {
 
   // Environment variables
   ENVIRONMENT?: string;
+
+  // Deployed version id and upload time ([version_metadata] in wrangler.toml)
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
 }
 
 // GitHub API types
