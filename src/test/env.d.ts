@@ -3,8 +3,9 @@ declare module "*.sql?raw" {
   export default content;
 }
 
-declare module "cloudflare:test" {
-  interface ProvidedEnv {
+// Bindings visible to tests through `env` from "cloudflare:test"
+declare namespace Cloudflare {
+  interface Env {
     DB: D1Database;
   }
 }

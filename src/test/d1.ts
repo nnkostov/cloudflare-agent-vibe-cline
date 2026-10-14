@@ -8,9 +8,12 @@ export async function resetDatabase(db: D1Database): Promise<void> {
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'",
     )
     .all<{ name: string }>();
-  for (const { name } of results) {
-    await db.prepare(`DROP TABLE IF EXISTS "${name}"`).run();
-  }
+  // One transaction with foreign-key checks deferred to commit, so tables
+  // can be dropped in any order (D1 enforces foreign keys).
+  await db.batch([
+    db.prepare("PRAGMA defer_foreign_keys = true"),
+    ...results.map(({ name }) => db.prepare(`DROP TABLE IF EXISTS "${name}"`)),
+  ]);
 
   const statements = schemaSql
     .split("\n")
