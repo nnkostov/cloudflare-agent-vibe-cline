@@ -87,8 +87,9 @@ export class TailWorker {
   }
 
   private async processEvent(event: TailEvent): Promise<void> {
+    // Each log line gets its own id below: tail_logs.id is the primary key,
+    // and a shared per-event id made every multi-line event fail to insert.
     const baseLog: Partial<ProcessedLog> = {
-      id: this.generateId(),
       timestamp: new Date(event.eventTimestamp).toISOString(),
       script_name: event.scriptName,
       outcome: event.outcome,
@@ -106,6 +107,7 @@ export class TailWorker {
     for (const log of event.logs) {
       const processedLog: ProcessedLog = {
         ...(baseLog as ProcessedLog),
+        id: this.generateId(),
         log_level: log.level,
         log_message: log.message.join(" "),
       };
@@ -120,6 +122,7 @@ export class TailWorker {
     for (const exception of event.exceptions) {
       const processedLog: ProcessedLog = {
         ...(baseLog as ProcessedLog),
+        id: this.generateId(),
         log_level: "error",
         error_name: exception.name,
         error_message: exception.message,
@@ -229,35 +232,38 @@ export class TailWorker {
     );
 
     try {
-      // Batch insert logs into D1
-      const values = this.logBatch
-        .map(
-          (log) =>
-            `('${log.id}', '${log.timestamp}', '${log.script_name}', '${log.outcome}', 
-          ${log.request_url ? `'${this.escapeString(log.request_url)}'` : "NULL"}, 
-          ${log.request_method ? `'${log.request_method}'` : "NULL"},
-          ${log.cf_colo ? `'${log.cf_colo}'` : "NULL"},
-          ${log.cf_country ? `'${log.cf_country}'` : "NULL"},
-          ${log.duration_ms || "NULL"},
-          ${log.log_level ? `'${log.log_level}'` : "NULL"},
-          ${log.log_message ? `'${this.escapeString(log.log_message)}'` : "NULL"},
-          ${log.error_name ? `'${this.escapeString(log.error_name)}'` : "NULL"},
-          ${log.error_message ? `'${this.escapeString(log.error_message)}'` : "NULL"},
-          ${log.error_stack ? `'${this.escapeString(log.error_stack)}'` : "NULL"},
-          ${log.api_calls ? `'${JSON.stringify(log.api_calls)}'` : "NULL"},
-          ${log.metrics ? `'${JSON.stringify(log.metrics)}'` : "NULL"})`,
-        )
-        .join(",\n");
-
-      await this.env.DB.prepare(
-        `
-        INSERT INTO tail_logs (
+      // Batch insert logs into D1 with bound parameters: log text can hold
+      // any characters, and one quote in a hand-built VALUES list used to
+      // fail the whole batch.
+      const insert = this.env.DB.prepare(
+        `INSERT INTO tail_logs (
           id, timestamp, script_name, outcome, request_url, request_method,
           cf_colo, cf_country, duration_ms, log_level, log_message,
           error_name, error_message, error_stack, api_calls, metrics
-        ) VALUES ${values}
-      `,
-      ).run();
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      await this.env.DB.batch(
+        this.logBatch.map((log) =>
+          insert.bind(
+            log.id,
+            log.timestamp,
+            log.script_name,
+            log.outcome,
+            log.request_url ?? null,
+            log.request_method ?? null,
+            log.cf_colo ?? null,
+            log.cf_country ?? null,
+            log.duration_ms ?? null,
+            log.log_level ?? null,
+            log.log_message ?? null,
+            log.error_name ?? null,
+            log.error_message ?? null,
+            log.error_stack ?? null,
+            log.api_calls ? JSON.stringify(log.api_calls) : null,
+            log.metrics ? JSON.stringify(log.metrics) : null,
+          ),
+        ),
+      );
 
       // Also send critical errors to an alert endpoint
       const criticalErrors = this.logBatch.filter(
@@ -326,9 +332,6 @@ export class TailWorker {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private escapeString(str: string): string {
-    return str.replace(/'/g, "''").replace(/\\/g, "\\\\");
-  }
 }
 
 export default {
